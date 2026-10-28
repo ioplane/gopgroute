@@ -6,8 +6,11 @@ Read README.md and docs/en/01-architecture.md before changes.
 - Documentation: English under docs/en; Russian under docs/ru.
 - Keep infrastructure addresses, inventory, credentials and private evidence
   outside this public repository. Examples use documentation address ranges.
-- T1 implements internal health probes and intent only. Do not claim a runnable
-  daemon, route actuation, operational acceptance or released artifacts.
+- T1 and T2 implement internal health and journaled route-ownership libraries.
+  Do not claim a runnable daemon, operational acceptance or released artifacts.
+  T3 must supervise a dedicated speaker independently before runtime admission.
+- Read docs/en/03-route-ownership.md and ADR 0002 before ownership changes.
+  Never retry an uncertain mutation or delete without a validated owned UUID.
 - Go code belongs in cmd and internal; tool dependencies belong in tools.
   Add public APIs only when an external consumer requires them.
 - Resolve compiler, module, action and OCI versions from primary sources;

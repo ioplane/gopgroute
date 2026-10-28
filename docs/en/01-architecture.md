@@ -1,8 +1,11 @@
 # Architecture
 
-Status: health core implemented, 2026-10-28. No daemon is implemented.
-The [health contract](02-health-contract.md), [ADR 0001](adr/0001-bounded-health-intent.md)
-and [implementation tracks](implementation-plan.md) bind the T1 delivery.
+Status: internal health and route-ownership libraries implemented, 2026-10-28.
+No daemon is implemented. T3 supervision remains a runtime admission gate.
+The [health contract](02-health-contract.md) and [ADR 0001](adr/0001-bounded-health-intent.md)
+bind T1; the [ownership contract](03-route-ownership.md) and
+[ADR 0002](adr/0002-durable-route-ownership.md) bind T2. The
+[implementation tracks](implementation-plan.md) define their exit evidence.
 
 ## Responsibility
 

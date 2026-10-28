@@ -8,7 +8,7 @@ and exit evidence, rather than a task ledger.
 |---|---|---|
 | T1 | Bounded Patroni probes and pure health intent policy | Health contract tests, container quality gates, independent plan/ADR/spec review |
 | T2 | GoBGP ownership, safe UUID deletion, startup and ambiguous RPC reconciliation | Native foreign-route preservation and restart tests; independent plan/ADR/spec review |
-| T3 | SQL pooler probe, supervised runtime and failure handling | Process crash/stall, live speaker, graceful restart and client outcomes; independent plan/ADR/spec review |
+| T3 | SQL pooler probe, supervised runtime and failure handling | Process crash/stall, speaker-incarnation binding, graceful restart and client outcomes; independent plan/ADR/spec review |
 | T4 | Laboratory integration and operating-system comparison | Exact platform/storage identity, single-node then HA admission, measured failure and restore evidence |
 
 T2 consumes T1 intent; it must check freshness at the actuation boundary.
