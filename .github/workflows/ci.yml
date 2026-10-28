@@ -1,0 +1,23 @@
+name: Repository checks
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  repository:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check whitespace and bootstrap files
+        run: |
+          empty_tree=$(git hash-object -w -t tree /dev/null)
+          git diff --check "$empty_tree" HEAD
+          git ls-files --error-unmatch README.md LICENSE AGENTS.md CHANGELOG.md docs/en/01-architecture.md docs/standards/naming.md

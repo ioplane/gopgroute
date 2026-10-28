@@ -1,0 +1,7 @@
+/.beads/
+/.serena/
+/coverage.out
+/bin/
+/dist/
+*.test
+.env
