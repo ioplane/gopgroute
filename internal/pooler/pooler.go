@@ -58,7 +58,7 @@ func New(cfg Config) (*Probe, error) {
 		}
 	}
 	// A fixed nonsecret seed avoids interpolating credentials or driver options.
-	connection, err := pgx.ParseConfig("host=127.0.0.1 port=1 database=gopgroute user=gopgroute password=unused sslmode=disable passfile=/dev/null target_session_attrs=any require_auth=scram-sha-256 channel_binding=disable")
+	connection, err := pgx.ParseConfig("host=127.0.0.1 port=1 database=gopgroute user=gopgroute sslmode=disable passfile=/dev/null target_session_attrs=any require_auth=scram-sha-256 channel_binding=disable")
 	if err != nil {
 		return nil, ErrConfig
 	}
