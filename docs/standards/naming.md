@@ -4,7 +4,7 @@
 
 Repository and binary names use lowercase ASCII letters without separators.
 Portable filenames use letters, digits, dots, underscores and hyphens, following
-[POSIX portable filenames](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_264).
+[POSIX portable filenames](https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/V1_chap03.html#tag_03_265).
 DNS labels additionally follow [RFC 1123, section 2.1](https://www.rfc-editor.org/rfc/rfc1123.html#section-2.1).
 
 ## Grammar and vocabulary
