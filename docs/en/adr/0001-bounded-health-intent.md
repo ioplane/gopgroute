@@ -28,6 +28,9 @@ until those safety requirements have executable evidence.
 
 ## Consequences
 
+Support the Patroni 4.x REST contract with target 4.1.5. Legacy 3.x role
+aliases are outside this track and cannot authorize an intent.
+
 A false negative can temporarily withdraw an intent, including during role
 changes. An observation expires while a slow request or later operation runs;
 its start time is deliberately conservative. An endpoint restricted to TLS 1.2

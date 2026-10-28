@@ -34,6 +34,7 @@ func TestPatroniEligibility(t *testing.T) {
 		{"exact_body_limit", Primary, 200, `{"state":"running","role":"primary"}` + strings.Repeat(" ", 65536-len(`{"state":"running","role":"primary"}`)), Healthy, false},
 		{"http_unhealthy", Primary, 503, `{"state":"running","role":"primary"}`, Unhealthy, false},
 		{"wrong_role", Primary, 200, `{"state":"running","role":"replica"}`, Unhealthy, false},
+		{"unsupported_legacy_role", Primary, 200, `{"state":"running","role":"master"}`, Unhealthy, false},
 		{"stopped", Primary, 200, `{"state":"stopped","role":"primary"}`, Unhealthy, false},
 		{"noloadbalance", Replica, 200, `{"state":"running","role":"replica","tags":{"noloadbalance":true}}`, Unhealthy, false},
 		{"malformed", Primary, 200, `{`, Unknown, true},

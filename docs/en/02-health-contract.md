@@ -22,6 +22,11 @@ not a proof of exclusive database write authority.
 
 ## Patroni probe
 
+The supported REST contract is Patroni 4.x; the target version is 4.1.5.
+Legacy `role=master` responses from Patroni 3.x are unhealthy. This probe
+validates response semantics, not installed-version attestation; deployment
+must admit the pinned Patroni version separately.
+
 - Only `/primary` and `/replica?lag=<unsigned-byte-count>` are selectable.
   `/leader` is never substituted for primary health.
 - HTTP 200 is necessary. The body must be a UTF-8 JSON object, state `running`
@@ -58,3 +63,5 @@ route mutation, production workload or infrastructure change in T1.
 - [Go monotonic clocks](https://pkg.go.dev/time#hdr-Monotonic_Clocks)
 - [RFC 8259, objects](https://www.rfc-editor.org/rfc/rfc8259.html#section-4)
 - [ADR 0001](adr/0001-bounded-health-intent.md)
+
+- [Patroni 4.0 role rename](https://patroni.readthedocs.io/en/latest/releases.html)

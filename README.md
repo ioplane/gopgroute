@@ -16,6 +16,8 @@ PgBouncer health.
 probes and a fail-closed intent policy are implemented and tested. The daemon,
 GoBGP actuator, SQL pooler probe and container images are not released.
 Quality checks do not demonstrate database availability or failover.
+The supported Patroni REST contract is 4.x, targeting 4.1.5; legacy 3.x
+`role=master` responses do not authorize an intent.
 
 ## Intended behavior
 

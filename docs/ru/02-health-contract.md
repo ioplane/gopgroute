@@ -24,6 +24,11 @@
 
 ## Проверка Patroni
 
+Поддерживается REST-контракт Patroni 4.x; целевая версия — 4.1.5.
+Ответы старого Patroni 3.x с `role=master` считаются неработоспособными.
+Проверяются семантика ответа, а не аттестация установленной версии;
+развёртывание отдельно подтверждает закреплённую версию Patroni.
+
 - Доступны только `/primary` и `/replica?lag=<беззнаковое-число-байт>`.
   `/leader` не подменяет проверку primary.
 - Обязателен HTTP 200. Тело — JSON-объект в UTF-8, `state=running` и ожидаемая
@@ -61,3 +66,5 @@ T1 требует тестов с настоящими HTTP/TLS-серверам
 - [Монотонное время Go](https://pkg.go.dev/time#hdr-Monotonic_Clocks)
 - [RFC 8259, объекты](https://www.rfc-editor.org/rfc/rfc8259.html#section-4)
 - [ADR 0001](adr/0001-bounded-health-intent.md)
+
+- [Изменение имени роли в Patroni 4.0](https://patroni.readthedocs.io/en/latest/releases.html)
