@@ -12,9 +12,11 @@ GoPGRoute is a standalone adapter project for announcing and withdrawing
 PostgreSQL service prefixes through GoBGP according to Patroni and local
 PgBouncer health.
 
-**Status: health-core implementation, no runtime release.** Internal Patroni
-probes and a fail-closed intent policy are implemented and tested. The daemon,
-GoBGP actuator, SQL pooler probe and container images are not released.
+**Status: internal health and route-ownership libraries, no runtime release.**
+Bounded Patroni probes, a fail-closed intent policy and a journaled GoBGP
+actuator are implemented and tested. The daemon, SQL pooler probe and container
+images are not released. Runtime admission requires the independent T3
+supervisor; an uncertain RPC is not evidence of route withdrawal.
 Quality checks do not demonstrate database availability or failover.
 The supported Patroni REST contract is 4.x, targeting 4.1.5; legacy 3.x
 `role=master` responses do not authorize an intent.
@@ -51,6 +53,8 @@ flowchart LR
 | [Architecture](docs/en/01-architecture.md) | Safety boundaries and acceptance criteria |
 | [Health contract](docs/en/02-health-contract.md) | Bounded probes and intent semantics |
 | [ADR 0001](docs/en/adr/0001-bounded-health-intent.md) | Health before route actuation |
+| [Route ownership](docs/en/03-route-ownership.md) | UUID authority, durable states and recovery limits |
+| [ADR 0002](docs/en/adr/0002-durable-route-ownership.md) | Explicit uncertainty before supervised runtime |
 | [Implementation tracks](docs/en/implementation-plan.md) | Track dependencies and exit evidence |
 | [Russian documentation](docs/ru/README.md) | Russian project entry point |
 | [Naming](docs/standards/naming.md) | Repository, module and binary identifiers |
@@ -60,7 +64,8 @@ flowchart LR
 ## Repository layout
 
 The layout follows [GoBFD](https://github.com/dantte-lp/gobfd), adapted to this
-project. `internal/health` owns the Patroni probe and intent policy; `tools`
+project. `internal/health` owns the Patroni probe and intent policy;
+`internal/gobgp` owns the private Unix RPC actuator and durable UUID journal. `tools`
 isolates pinned development tools from runtime dependencies. `docs/en`,
 `docs/ru` and `.github` contain contracts and quality workflows. Subsequent
 tracks add `cmd`, `configs`, `deployments` and native integration tests when
@@ -71,7 +76,8 @@ their implementations are available. Public APIs require an actual consumer.
 Install Podman and Make, then run `make verify`. All Go commands execute in a
 digest-pinned Go 1.27.3 Debian Trixie image with two CPU and a 2 GiB memory
 limit. Checks include race tests, vet, format, lint, module tidiness and
-vulnerability analysis. Runtime uses only the Go standard library.
+vulnerability analysis. Runtime dependencies pin GoBGP 4.10.0 and gRPC 1.85.0;
+native tests start an isolated speaker without BGP peers or a TCP/179 listener.
 
 ## License
 
