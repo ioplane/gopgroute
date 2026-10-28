@@ -8,7 +8,9 @@ client-visible failure tests remain required by the implementation plan.
 
 The probe targets an explicit literal-loopback TCP address and port of the
 local PgBouncer. Its configured expected PostgreSQL backend must also be an
-exact loopback address and port, different from the frontend endpoint. DNS, remote targets, Unix-backend NULL
+exact loopback address and port, different from the frontend endpoint. Both
+addresses carry no IPv6 zone and no IPv4-mapped form, so equal sockets cannot
+compare as different endpoints. DNS, remote targets, Unix-backend NULL
 identities, multi-host fallbacks and arbitrary DSNs are outside this contract.
 Use the application database alias through the pooler, not its admin console.
 

@@ -18,7 +18,7 @@ func fixture() Config {
 }
 
 func TestConfigurationBoundary(t *testing.T) {
-	for _, kind := range []string{"remote", "mapped", "port", "backend", "direct", "database", "admin", "user", "password", "NUL", "timeout", "environment"} {
+	for _, kind := range []string{"remote", "mapped", "port", "backend", "direct", "zone", "backend-zone", "database", "admin", "user", "password", "NUL", "timeout", "environment"} {
 		t.Run(kind, func(t *testing.T) {
 			c := fixture()
 			switch kind {
@@ -32,6 +32,12 @@ func TestConfigurationBoundary(t *testing.T) {
 				c.Backend = netip.MustParseAddrPort("192.0.2.1:5432")
 			case "direct":
 				c.Address = c.Backend
+			case "zone":
+				c.Address = netip.MustParseAddrPort("[::1%lo]:5432")
+				c.Backend = netip.MustParseAddrPort("[::1]:5432")
+			case "backend-zone":
+				c.Address = netip.MustParseAddrPort("[::1]:6432")
+				c.Backend = netip.MustParseAddrPort("[::1%lo]:5432")
 			case "database":
 				c.Database = ""
 			case "admin":

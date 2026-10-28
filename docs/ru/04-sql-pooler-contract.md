@@ -6,6 +6,8 @@
 
 Подключение выполняется к явному literal-loopback TCP endpoint локального
 PgBouncer. Ожидаемый backend PostgreSQL — другой точный loopback адрес/порт.
+Оба адреса без IPv6 zone и без IPv4-mapped формы, чтобы один сокет не
+сравнивался как два разных endpoint.
 DNS, удалённые адреса, NULL identity Unix-backend, multihost, произвольный DSN
 и admin-консоль пулера не допускаются. Проверяется alias прикладной БД.
 

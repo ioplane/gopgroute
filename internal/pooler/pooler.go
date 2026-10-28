@@ -40,7 +40,8 @@ var (
 )
 
 func local(address netip.AddrPort) bool {
-	return address.IsValid() && address.Port() != 0 && address.Addr().IsLoopback() && !address.Addr().Is4In6()
+	// A zone would make equal sockets compare unequal and bypass the pooler check.
+	return address.IsValid() && address.Port() != 0 && address.Addr().IsLoopback() && !address.Addr().Is4In6() && address.Addr().Zone() == ""
 }
 
 func text(value string, limit int) bool {
