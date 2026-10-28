@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Bounded SQL observation through the local PgBouncer with SCRAM-only
+  authentication, a required initial SASL request, exact backend identity,
+  ADR 0003 and native PostgreSQL 18.6 / PgBouncer 1.26.1 tests.
 - Private Unix GoBGP actuator with durable UUID ownership, exact withdrawal,
   startup refusal on uncertainty and native lost-response/restart tests.
 - Route ownership contract and ADR 0002 in English and Russian; runtime
