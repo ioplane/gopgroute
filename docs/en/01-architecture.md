@@ -1,6 +1,8 @@
 # Architecture
 
-Status: design, 2026-10-28. No daemon is implemented.
+Status: health core implemented, 2026-10-28. No daemon is implemented.
+The [health contract](02-health-contract.md), [ADR 0001](adr/0001-bounded-health-intent.md)
+and [implementation tracks](implementation-plan.md) bind the T1 delivery.
 
 ## Responsibility
 

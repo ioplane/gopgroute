@@ -12,9 +12,10 @@ GoPGRoute is a standalone adapter project for announcing and withdrawing
 PostgreSQL service prefixes through GoBGP according to Patroni and local
 PgBouncer health.
 
-**Status: design and repository bootstrap.** The daemon, CLI, packages and
-container images are not implemented or released. Repository checks validate
-bootstrap files; they do not demonstrate database availability or failover.
+**Status: health-core implementation, no runtime release.** Internal Patroni
+probes and a fail-closed intent policy are implemented and tested. The daemon,
+GoBGP actuator, SQL pooler probe and container images are not released.
+Quality checks do not demonstrate database availability or failover.
 
 ## Intended behavior
 
@@ -46,6 +47,9 @@ flowchart LR
 | Document | Purpose |
 |---|---|
 | [Architecture](docs/en/01-architecture.md) | Safety boundaries and acceptance criteria |
+| [Health contract](docs/en/02-health-contract.md) | Bounded probes and intent semantics |
+| [ADR 0001](docs/en/adr/0001-bounded-health-intent.md) | Health before route actuation |
+| [Implementation tracks](docs/en/implementation-plan.md) | Track dependencies and exit evidence |
 | [Russian documentation](docs/ru/README.md) | Russian project entry point |
 | [Naming](docs/standards/naming.md) | Repository, module and binary identifiers |
 | [Contributing](CONTRIBUTING.md) | Review and development workflow |
@@ -54,10 +58,18 @@ flowchart LR
 ## Repository layout
 
 The layout follows [GoBFD](https://github.com/dantte-lp/gobfd), adapted to this
-project. `docs/en`, `docs/ru`, `.github` and project policy files exist now.
-Implementation adds `cmd`, `internal`, `configs`, `deployments`, `test` and
-`tools` with their first real contents. Public `api` and generated `pkg`
-packages require an actual API decision.
+project. `internal/health` owns the Patroni probe and intent policy; `tools`
+isolates pinned development tools from runtime dependencies. `docs/en`,
+`docs/ru` and `.github` contain contracts and quality workflows. Subsequent
+tracks add `cmd`, `configs`, `deployments` and native integration tests when
+their implementations are available. Public APIs require an actual consumer.
+
+## Development
+
+Install Podman and Make, then run `make verify`. All Go commands execute in a
+digest-pinned Go 1.27.3 Debian Trixie image with two CPU and a 2 GiB memory
+limit. Checks include race tests, vet, format, lint, module tidiness and
+vulnerability analysis. Runtime uses only the Go standard library.
 
 ## License
 
