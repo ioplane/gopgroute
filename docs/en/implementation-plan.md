@@ -16,6 +16,19 @@ T3 supplies real SQL health and supervised failure behavior. A container or unit
 test does not qualify deployed database HA. T4 remains subject to exact target,
 identity, credential and operational change gates.
 
+T3 consists of subtracks, each with an independent plan/ADR/spec review:
+
+| Subtrack | Scope | Exit evidence |
+|---|---|---|
+| T3.1 | SQL through actual local PgBouncer | Native SCRAM, role/backend identity, protocol and timeout tests |
+| T3.2 | Independent guardian and completed-cycle progress | Real crash/stall, native route uncertainty and bounded stop |
+| T3.3 | Daemon, sealed settings, pinned external speaker | Config/fuzz, role matrix, parent death across exec, native SQL/RIB lifecycle and container quality |
+| T3.4 | Artifact, restart/recovery, peers, client outcomes | Exact artifact/advisory qualification, clean incarnation recovery, measured GR/RIB/FIB retention and transactions |
+
+The daemon remains a source candidate. An open PR and green CI do not close
+T3.4 or authorize T4. The [daemon contract](06-daemon-contract.md) and
+[ADR 0005](adr/0005-sealed-daemon-incarnation.md) bind the integration.
+
 No BFD or HAProxy dependency is introduced. Route withdrawal does not replace
 Patroni/DCS/watchdog fencing. Private platform inventories and evidence stay
 outside this public repository.

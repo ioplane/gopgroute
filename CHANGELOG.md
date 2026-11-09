@@ -7,6 +7,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Linux daemon candidate with sealed child settings, a digest-pinned external
+  speaker, exec-thread parent-death protection, read-only policy admission and
+  role-bound SQL cycles. Configuration fuzzing, exhaustive role combinations,
+  exec/guardian-death and native PostgreSQL/PgBouncer RIB tests qualify source
+  behavior; artifacts, restart recovery and peer/client HA remain separate.
+  Format/lint use the official pinned container image.
+
 - Linux supervisor for a dedicated speaker/adapter process pair, private fd-3
   progress, bounded TERM/KILL shutdown, child-incarnation binding and parent
   death signals. Serial reconciliation emits progress only after success;

@@ -63,6 +63,7 @@ version. Закреплённый v4.10.0 содержит указанный в
 treat-as-withdraw и session-reset. Это проверка конкретной исходной версии,
 не приёмка установленного speaker. Сканер остаётся включённым без подавления.
 При обновлении зависимости повторяются проверка базы, ancestry и regression.
-Сервер GoBGP импортируется только нативными тестами без BGP peers. Два
+Сервер GoBGP импортируется только тестами; T2 ownership tests не задают peers,
+daemon fixtures используют loopback-only peer без квалификации соединённого соседа. Два
 HTML advisory x/net устранены закреплением v0.62.0. Источники приведены в
 [английской спецификации](../en/03-route-ownership.md#dependency-advisory-qualification).

@@ -1,14 +1,16 @@
 # Architecture
 
-Status: internal health and route-ownership libraries implemented, 2026-10-28.
-No daemon is implemented. Internal T3 progress and Linux supervision components
-are implemented; their daemon integration and peer behavior remain admission gates.
+Status: internal libraries and Linux daemon candidate, 2026-11-09.
+Progress, supervision and daemon wiring are implemented. Artifact admission,
+restart recovery, peer behavior and client outcomes remain separate gates.
 The [health contract](02-health-contract.md) and [ADR 0001](adr/0001-bounded-health-intent.md)
 bind T1; the [ownership contract](03-route-ownership.md) and
 [ADR 0002](adr/0002-durable-route-ownership.md) bind T2. The
 [implementation tracks](implementation-plan.md) define their exit evidence.
 The [supervised progress contract](05-supervised-progress.md) and
 [ADR 0004](adr/0004-supervised-process-progress.md) bind T3.2.
+The [daemon contract](06-daemon-contract.md) and
+[ADR 0005](adr/0005-sealed-daemon-incarnation.md) bind T3.3.
 
 ## Responsibility
 

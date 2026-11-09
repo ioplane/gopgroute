@@ -93,5 +93,6 @@ source and regression evidence for this finding, not a general security or
 deployed-speaker qualification. Keep the scanner enabled without suppression;
 refresh the database and exact-source evidence when changing the dependency.
 The adapter does not import the GoBGP server; native tests do. No BGP peer is
-configured in those tests. The x/net HTML advisories are resolved by pinning
+configured in those T2 ownership tests; daemon fixtures configure a loopback-only
+peer without qualifying a connected peer. The x/net HTML advisories are resolved by pinning
 v0.62.0, rather than by relying on their currently unreachable code paths.

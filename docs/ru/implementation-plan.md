@@ -17,6 +17,19 @@ Unit-тест или контейнер не подтверждает HA раз�
 T4 сохраняет gates точных целей, identity, credentials и эксплуатационных
 изменений.
 
+Подтреки T3 проходят отдельную независимую сверку плана, ADR и спецификации:
+
+| Подтрек | Область | Выходные свидетельства |
+|---|---|---|
+| T3.1 | SQL через настоящий локальный PgBouncer | Native SCRAM, role/backend identity, protocol и timeout tests |
+| T3.2 | Независимый guardian и progress завершённых циклов | Реальные crash/stall, native route uncertainty и ограниченная остановка |
+| T3.3 | Демон, sealed settings, закреплённый внешний speaker | Config/fuzz, role matrix, parent death после exec, native SQL/RIB lifecycle и quality gates |
+| T3.4 | Artifact, restart/recovery, peers, client outcomes | Artifact/advisory qualification, чистая incarnation, измеренные GR/RIB/FIB retention и транзакции |
+
+Демон остаётся исходным кандидатом. Открытый PR и зелёный CI не закрывают T3.4
+и не разрешают T4. Интеграцию определяют [контракт](06-daemon-contract.md)
+и [ADR 0005](adr/0005-sealed-daemon-incarnation.md).
+
 Зависимости BFD и HAProxy не добавляются. Отзыв маршрута не заменяет fencing
 Patroni, DCS и watchdog. Закрытые inventory и свидетельства платформы остаются
 за пределами публичного репозитория.

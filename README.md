@@ -12,11 +12,12 @@ GoPGRoute is a standalone adapter project for announcing and withdrawing
 PostgreSQL service prefixes through GoBGP according to Patroni and local
 PgBouncer health.
 
-**Status: internal health and route-ownership libraries, no runtime release.**
+**Status: internal libraries and daemon candidate, no runtime release.**
 Bounded Patroni and SQL probes, a fail-closed intent policy, a journaled GoBGP
 actuator, a reconciliation progress loop and a Linux child-process supervisor
-are implemented and tested. The daemon and runtime container images are not
-released. Runtime admission still requires their integration and peer checks;
+are implemented and tested. The Linux daemon candidate wires these components;
+runtime container images and the delivered upstream speaker are not qualified.
+Runtime admission still requires artifact, peer, restart and client checks;
 an uncertain RPC is not evidence of route withdrawal.
 Quality checks do not demonstrate database availability or failover.
 The supported Patroni REST contract is 4.x, targeting 4.1.5; legacy 3.x
@@ -58,6 +59,8 @@ flowchart LR
 | [ADR 0002](docs/en/adr/0002-durable-route-ownership.md) | Explicit uncertainty before supervised runtime |
 | [Supervised progress](docs/en/05-supervised-progress.md) | Private progress pipe, process ownership and failure limits |
 | [ADR 0004](docs/en/adr/0004-supervised-process-progress.md) | Progress after reconciliation, independent child shutdown |
+| [Daemon contract](docs/en/06-daemon-contract.md) | Sealed settings, pinned exec, role binding and remaining gates |
+| [ADR 0005](docs/en/adr/0005-sealed-daemon-incarnation.md) | One configuration and independently qualified speaker artifact |
 | [Implementation tracks](docs/en/implementation-plan.md) | Track dependencies and exit evidence |
 | [Russian documentation](docs/ru/README.md) | Russian project entry point |
 | [Naming](docs/standards/naming.md) | Repository, module and binary identifiers |
@@ -71,9 +74,10 @@ project. `internal/health` owns the Patroni probe and intent policy;
 `internal/gobgp` owns the private Unix RPC actuator and durable UUID journal.
 `internal/reconcile` emits progress after completed cycles; `internal/supervisor`
 owns a dedicated speaker and adapter process pair. `tools`
-isolates pinned development tools from runtime dependencies. `docs/en`,
+isolates pinned development tools from runtime dependencies. `cmd/gopgroute`
+and `internal/app` wire the daemon; `configs` contains a synthetic example. `docs/en`,
 `docs/ru` and `.github` contain contracts and quality workflows. Subsequent
-tracks add `cmd`, `configs`, `deployments` and native integration tests when
+tracks add `deployments` and peer/client integration tests when
 their implementations are available. Public APIs require an actual consumer.
 
 ## Development
@@ -81,8 +85,10 @@ their implementations are available. Public APIs require an actual consumer.
 Install Podman and Make, then run `make verify`. All Go commands execute in a
 digest-pinned Go 1.27.3 Debian Trixie image with two CPU and a 2 GiB memory
 limit. Checks include race tests, vet, format, lint, module tidiness and
-vulnerability analysis. Runtime dependencies pin GoBGP 4.10.0 and gRPC 1.85.0;
-native tests start an isolated speaker without BGP peers or a TCP/179 listener.
+vulnerability analysis. Format/lint use the official digest-pinned golangci-lint
+2.15.0 image. Runtime dependencies pin GoBGP 4.10.0 and gRPC 1.85.0;
+T2 native tests start an isolated speaker without peers or a TCP/179 listener.
+Daemon fixtures configure a loopback-only peer; no connected peer behavior is qualified.
 
 ## License
 
