@@ -7,6 +7,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Linux supervisor for a dedicated speaker/adapter process pair, private fd-3
+  progress, bounded TERM/KILL shutdown, child-incarnation binding and parent
+  death signals. Serial reconciliation emits progress only after success;
+  process and native GoBGP fault tests cover crash, stall and uncertainty.
+  Daemon wiring, peer graceful restart and database HA admission remain separate.
+
 - Bounded SQL observation through the local PgBouncer with SCRAM-only
   authentication, a required initial SASL request, exact backend identity,
   ADR 0003 and native PostgreSQL 18.6 / PgBouncer 1.26.1 tests.

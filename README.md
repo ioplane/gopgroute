@@ -13,10 +13,11 @@ PostgreSQL service prefixes through GoBGP according to Patroni and local
 PgBouncer health.
 
 **Status: internal health and route-ownership libraries, no runtime release.**
-Bounded Patroni probes, a fail-closed intent policy and a journaled GoBGP
-actuator are implemented and tested. The daemon, SQL pooler probe and container
-images are not released. Runtime admission requires the independent T3
-supervisor; an uncertain RPC is not evidence of route withdrawal.
+Bounded Patroni and SQL probes, a fail-closed intent policy, a journaled GoBGP
+actuator, a reconciliation progress loop and a Linux child-process supervisor
+are implemented and tested. The daemon and runtime container images are not
+released. Runtime admission still requires their integration and peer checks;
+an uncertain RPC is not evidence of route withdrawal.
 Quality checks do not demonstrate database availability or failover.
 The supported Patroni REST contract is 4.x, targeting 4.1.5; legacy 3.x
 `role=master` responses do not authorize an intent.
@@ -55,6 +56,8 @@ flowchart LR
 | [ADR 0001](docs/en/adr/0001-bounded-health-intent.md) | Health before route actuation |
 | [Route ownership](docs/en/03-route-ownership.md) | UUID authority, durable states and recovery limits |
 | [ADR 0002](docs/en/adr/0002-durable-route-ownership.md) | Explicit uncertainty before supervised runtime |
+| [Supervised progress](docs/en/05-supervised-progress.md) | Private progress pipe, process ownership and failure limits |
+| [ADR 0004](docs/en/adr/0004-supervised-process-progress.md) | Progress after reconciliation, independent child shutdown |
 | [Implementation tracks](docs/en/implementation-plan.md) | Track dependencies and exit evidence |
 | [Russian documentation](docs/ru/README.md) | Russian project entry point |
 | [Naming](docs/standards/naming.md) | Repository, module and binary identifiers |
@@ -65,7 +68,9 @@ flowchart LR
 
 The layout follows [GoBFD](https://github.com/dantte-lp/gobfd), adapted to this
 project. `internal/health` owns the Patroni probe and intent policy;
-`internal/gobgp` owns the private Unix RPC actuator and durable UUID journal. `tools`
+`internal/gobgp` owns the private Unix RPC actuator and durable UUID journal.
+`internal/reconcile` emits progress after completed cycles; `internal/supervisor`
+owns a dedicated speaker and adapter process pair. `tools`
 isolates pinned development tools from runtime dependencies. `docs/en`,
 `docs/ru` and `.github` contain contracts and quality workflows. Subsequent
 tracks add `cmd`, `configs`, `deployments` and native integration tests when
