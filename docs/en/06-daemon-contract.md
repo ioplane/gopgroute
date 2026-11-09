@@ -47,8 +47,10 @@ and [sealed memfd](https://man7.org/linux/man-pages/man2/memfd_create.2.html).
 
 ## Speaker and cycle admission
 
-The generated GoBGP configuration rejects imported routes and rejects exports
-except the two local service /32 prefixes. It configures one to sixteen distinct
+The generated GoBGP configuration admits only the two local service /32 prefixes
+on import and export, rejecting routes learned from peers. Global import policy
+also applies to local AddPath; default reject alone would filter those paths.
+It configures one to sixteen distinct
 IPv4 external peers and IPv4 unicast only. The adapter admits the private socket
 and reads back the ASN/router ID, policy assignments, export statement, prefix
 set and peer configuration before creating its route manager. Readiness retries

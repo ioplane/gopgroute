@@ -45,7 +45,9 @@ Set-id и file capabilities запрещены: exec способен очист
 
 ## Speaker и цикл сверки
 
-GoBGP отвергает import и разрешает export только двух локальных /32.
+GoBGP допускает только два локальных /32 на import и export, отвергая маршруты
+от peers. Global import policy применяется и к локальному AddPath; один
+default reject отфильтровал бы эти маршруты.
 Задаются 1–16 отдельных IPv4 external peers, только IPv4 unicast. До открытия
 route manager адаптер проверяет socket, ASN/router ID, policy assignments,
 export statement, prefix set и peers через read-only RPC с startup deadline.

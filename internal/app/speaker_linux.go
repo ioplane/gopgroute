@@ -74,7 +74,8 @@ port = -1
 [global.apply-policy.config]
 default-import-policy = "reject-route"
 default-export-policy = "reject-route"
-export-policy-list = ["service-export"]
+import-policy-list = ["local-services"]
+export-policy-list = ["local-services"]
 [[defined-sets.prefix-sets]]
 prefix-set-name = "services"
 [[defined-sets.prefix-sets.prefix-list]]
@@ -84,7 +85,7 @@ masklength-range = "32..32"
 ip-prefix = "%s"
 masklength-range = "32..32"
 [[policy-definitions]]
-name = "service-export"
+name = "local-services"
 [[policy-definitions.statements]]
 name = "local-services"
 [policy-definitions.statements.conditions.bgp-conditions]
@@ -140,14 +141,14 @@ func speakerReady(ctx context.Context, client api.GoBgpServiceClient, cfg Config
 			return false, nil
 		}
 		policies := assignment.GetPolicies()
-		if (direction == api.PolicyDirection_POLICY_DIRECTION_IMPORT && len(policies) != 0) || (direction == api.PolicyDirection_POLICY_DIRECTION_EXPORT && (len(policies) != 1 || policies[0].GetName() != "service-export")) {
+		if len(policies) != 1 || policies[0].GetName() != "local-services" {
 			return false, nil
 		}
 		if _, err := stream.Recv(); !errors.Is(err, io.EOF) {
 			return false, errors.New("unexpected policy assignment stream")
 		}
 	}
-	policies, err := client.ListPolicy(ctx, &api.ListPolicyRequest{Name: "service-export"})
+	policies, err := client.ListPolicy(ctx, &api.ListPolicyRequest{Name: "local-services"})
 	if err != nil {
 		return false, err
 	}
