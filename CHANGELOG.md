@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- Go 1.27.4 rebuilds runtime and SQL fixtures with the standard-library fix for
+  GO-2026-6859. Runtime toolchain selection refuses download fallback; the
+  independently pinned formatter/linter retains its own analysis compiler.
+
 ### Added
 
 - Isolated Podman Compose full stack fixture with three PostgreSQL/Patroni

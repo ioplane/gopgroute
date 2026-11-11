@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Безопасность
+
+- Компилятор Go 1.27.4 устраняет GO-2026-6859 в runtime и SQL fixtures.
+  Выбор runtime toolchain запрещает скачивание запасного компилятора;
+  закреплённый formatter/linter сохраняет собственный компилятор анализа.
+
 ### Добавлено
 
 - Изолированный стенд Podman Compose: три PostgreSQL/Patroni, etcd, PgBouncer,

@@ -83,7 +83,7 @@ their implementations are available. Public APIs require an actual consumer.
 ## Development
 
 Install Podman and Make, then run `make verify`. All Go commands execute in a
-digest-pinned Go 1.27.3 Debian Trixie image with two CPU and a 2 GiB memory
+digest-pinned Go 1.27.4 Debian Trixie image with two CPU and a 2 GiB memory
 limit. Checks include race tests, vet, format, lint, module tidiness and
 vulnerability analysis. Format/lint use the official digest-pinned golangci-lint
 2.15.0 image. Runtime dependencies pin GoBGP 4.10.0 and gRPC 1.85.0;
