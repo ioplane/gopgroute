@@ -24,7 +24,7 @@ the image provenance labels.
 
 Prepare a private env file containing `LAB_PROJECT`, `LAB_SESSION`, `LAB_IMAGE`
 (the exact loaded image ID), `LAB_DATA`, `LAB_CREDENTIALS` and `LAB_CODE`.
-Use a session-prefixed project. `LAB_CODE` contains the two Python files and is
+Use a session-prefixed project. `LAB_CODE` contains this directory's Python files and is
 mounted read-only; `LAB_DATA` holds three node directories and client evidence.
 Create an empty private directory on host tmpfs for `LAB_CREDENTIALS`.
 Run the image's `credentials` role once with that directory mounted read-write
@@ -86,3 +86,69 @@ This single-host emulation does not qualify independent physical failure
 domains, hardware watchdog fencing, storage failures, backup/PITR, production
 TLS admission or multi-DC performance. Preserve the requested stand by its
 persistence labels; cleanup must target only its exact compose project.
+
+## Automated fault campaign
+
+Build `./cmd/gopgroute-lab` in the pinned Go development container. The runner
+uses an explicit transport argv to the lab host; it never mounts an engine
+socket. The same container must contain the transport binary and its private
+read-only credentials. Use a private regular JSON file (mode 0600), containing:
+
+```json
+{
+  "transport": ["/absolute/path/to/transport", "host-arguments"],
+  "project": "agent-session-lab",
+  "session": "00000000-0000-0000-0000-000000000000",
+  "root": "/absolute/remote/project",
+  "source_dir": "/work",
+  "timeout_seconds": 90,
+  "images": {"leaf1": "exact-64-hex-image-id-for-each-of-the-ten-services"}
+}
+```
+
+The transport receives one final shell-quoted command argument. `root` must
+contain the reviewed `compose.yaml`, `lab.env` and `code` directory. Supply all
+ten actual image IDs in `images`; the abbreviated example is not executable.
+The session/persistence labels, exact network attachments, internal networks,
+init, privileges, published ports and shared route/database namespace are
+checked before mutation. Local source is mounted at `source_dir` for native
+regressions; no dependency download may bypass the configured internal mirror.
+
+`gopgroute-lab --config <private-json>` prints the plan without executing remote
+commands. Add `--apply --output <new-absolute-directory>` to execute; `--only`
+accepts explicit comma-separated scenario IDs. An existing output directory is
+rejected. The finite model contains 48 cases:
+
+- Healthy baseline and three targeted Patroni switchovers.
+- Primary/replica guardian, adapter and speaker SIGKILL/SIGSTOP.
+- Primary/replica PgBouncer, PostgreSQL process-tree and Patroni suspension.
+- Three whole database-container losses, three etcd singleton and three
+  two-voter losses.
+- Three leaf losses and three individual BGP session-edge withdrawals.
+- Primary DCS-client isolation, two replica replay pauses and a coupled
+  guardian/adapter suspension.
+- Seven native GoBGP/lease/incarnation regression boundaries.
+
+Each case records before/during/after observations, commands, timings and
+transaction receipts. Cleanup resumes exact process incarnations and restores
+only the selected resources. Route fault preparation recreates that route
+container to reset its finite retry budget while preserving journal roots.
+Lost mutation replies are never replayed. A signal may be reconciled only
+after a durable request-bound injector record proves quiescence and a new
+guardian, journal generation and UUID are observed. Unproven recovery retains
+the campaign marker and blocks subsequent faults. Abrupt controller/host death
+still requires manual review of the retained marker and pending intents.
+
+`report.json` retains the full evidence; `report.md` summarizes `PASS`, `FAIL`,
+`EXPECTED_LIMITATION`, `RECOVERY_FAILED` and `BLOCKED` separately. Reports are
+private artifacts and must not be committed. Expected limitations are not HA
+acceptance: watchdog-off Patroni suspension, the sole client ingress leaf and
+coupled userspace suspension have separate verdicts. A recovered invariant
+failure allows the remaining cases to run but keeps the final exit nonzero.
+Acknowledged synthetic transactions must match exactly after every recovery;
+an unknown COMMIT outcome stops without repeating the INSERT.
+
+This covers the declared finite graph of faults, not arbitrary combinations,
+physical three-site isolation, hardware fencing or backup recovery. BGP edge
+tests withdraw sessions; they do not emulate cable failure. Reported timings
+include transport/probe overhead and are not production RTO measurements.

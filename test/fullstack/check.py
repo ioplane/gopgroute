@@ -40,6 +40,7 @@ def observe() -> dict:
             connection,
             connection.cursor() as cursor,
         ):
+            cursor.execute("SET LOCAL statement_timeout = '1500ms'")
             cursor.execute(
                 "SELECT pg_is_in_recovery(), inet_server_addr()::text, pg_postmaster_start_time()::text"
             )
@@ -77,6 +78,7 @@ def receipt(identifier: int) -> dict:
         connection,
         connection.cursor() as cursor,
     ):
+        cursor.execute("SET LOCAL statement_timeout = '1500ms'")
         cursor.execute(
             "INSERT INTO lab_receipts(id,payload) VALUES (%s,%s)", (identifier, payload)
         )
@@ -91,6 +93,7 @@ def verify(expected: list[int]) -> dict:
         connection,
         connection.cursor() as cursor,
     ):
+        cursor.execute("SET LOCAL statement_timeout = '1500ms'")
         cursor.execute("SELECT id,payload FROM lab_receipts ORDER BY id")
         rows = cursor.fetchall()
         required = [

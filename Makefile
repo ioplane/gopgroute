@@ -12,7 +12,11 @@ RUN = podman run --rm --cpus=2 --memory=2g --pids-limit=256 --cap-drop=ALL --sec
 LINT_RUN = $(subst GOTOOLCHAIN=go1.27.4+path,GOTOOLCHAIN=local,$(subst $(GO_IMAGE),$(LINT_IMAGE),$(RUN)))
 
 .PHONY: verify cache toolchain tidy build test vet fmt fmt-check lint vulncheck
-verify: toolchain tidy build test vet fmt-check lint vulncheck
+verify: toolchain tidy build test vet fmt-check lint vulncheck lab-test
+
+.PHONY: lab-test
+lab-test: cache
+	$(RUN) python3 -m unittest discover -s test/fullstack -p 'test_*.py'
 
 cache:
 	mkdir -p "$(GO_BUILD_CACHE)" "$(GO_MOD_CACHE)"

@@ -20,6 +20,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- A finite 48-case GoBGP/Patroni fault campaign with bounded remote execution,
+  exact isolated-lab admission, registered recovery, transaction/journal
+  checks and private JSON/Markdown reports. Expected limitations and blocked
+  cases remain distinct from passing invariants; ambiguous mutations are not
+  replayed. Python probe/fault unit tests run in the existing Go container.
+
 - Isolated Podman Compose full stack fixture with three PostgreSQL/Patroni
   sites, etcd, PgBouncer, supervised GoBGP, FRR leaves and a routed SQL/PowerDNS
   client. Checks distinguish role eligibility and acknowledged transactions;

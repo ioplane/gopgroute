@@ -91,6 +91,22 @@ func TestEitherLeaseExcludesChangedOtherRoot(t *testing.T) {
 	}
 }
 
+func TestGuardianSameRootsExcludesConcurrentStart(t *testing.T) {
+	cfg := testConfig(t)
+	lease, err := incarnationLease(cfg.RuntimeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	speaker, adapter := childCommand("speaker"), childCommand("adapter")
+	err = Guardian(t.Context(), cfg, speaker, adapter)
+	if closeErr := lease.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if err == nil || speaker.Process != nil || adapter.Process != nil {
+		t.Fatalf("concurrent same-root guardian admitted: %v", err)
+	}
+}
+
 func TestIncarnationRejectsUnsafeLeaseAndDirectory(t *testing.T) {
 	for _, kind := range []string{"symlink", "hardlink", "mode", "directory", "generation-symlink"} {
 		t.Run(kind, func(t *testing.T) {
