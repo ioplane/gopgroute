@@ -147,6 +147,9 @@ coupled userspace suspension have separate verdicts. A recovered invariant
 failure allows the remaining cases to run but keeps the final exit nonzero.
 Acknowledged synthetic transactions must match exactly after every recovery;
 an unknown COMMIT outcome stops without repeating the INSERT.
+One during-fault ACK proves availability at that observation point, not
+continuous availability throughout the fault interval. `replica` selects the
+current synchronous standby; `replica2` selects the asynchronous standby.
 
 This covers the declared finite graph of faults, not arbitrary combinations,
 physical three-site isolation, hardware fencing or backup recovery. BGP edge
