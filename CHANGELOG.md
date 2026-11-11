@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- SQL fencing observations run in a bounded owned worker. A frozen or failed
+  worker reports an unknown database outcome; unconfirmed worker completion
+  blocks replacement probes and retains campaign uncertainty.
+
 - Replay-lag faults emit bounded WAL payloads and require a measured lag above
   the configured threshold before asserting route withdrawal.
 

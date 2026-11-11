@@ -160,15 +160,35 @@ func fencingConfirmed(p probe) (bool, error) {
 	}
 }
 
+func (c *controller) fencingObservation(ctx context.Context, node int) (probe, error) {
+	p, e := c.readProbe(ctx, fmt.Sprintf("db%d", node), "fencing")
+	stopped, stopErr := p.boolean("execution_stopped")
+	if e != nil || stopErr != nil || !stopped {
+		c.mu.Lock()
+		c.uncertain = true
+		c.mu.Unlock()
+		return p, errors.Join(e, stopErr, errors.New("fencing observation worker completion unconfirmed; no replacement probe"))
+	}
+	return p, nil
+}
+
 func (c *controller) fenced(ctx context.Context, node int, r *outcome) error {
-	return poll(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
-		p, e := c.readProbe(ctx, fmt.Sprintf("db%d", node), "fencing")
+	var terminal error
+	e := poll(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+		p, e := c.fencingObservation(ctx, node)
 		r.During["old_primary"] = p
 		if e != nil {
-			return false, e
+			terminal = e
+			return true, nil
+		}
+		state, e := p.text("state")
+		if e != nil || state == "unknown" {
+			terminal = errors.Join(e, errors.New("fencing observation UNKNOWN"))
+			return true, nil
 		}
 		return fencingConfirmed(p)
 	})
+	return errors.Join(e, terminal)
 }
 
 func (c *controller) window(ctx context.Context, d time.Duration, check func() error) error {
@@ -385,7 +405,7 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot, 
 				fail(e)
 				return r
 			}
-			p, e := c.readProbe(ctx, db, "fencing")
+			p, e := c.fencingObservation(ctx, node)
 			if e != nil {
 				fail(e)
 				return r

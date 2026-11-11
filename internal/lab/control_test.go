@@ -28,6 +28,16 @@ func TestFiniteCatalogHasUniqueCompleteCases(t *testing.T) {
 	}
 }
 
+func TestFencingTransportFailureRetainsCampaignUncertainty(t *testing.T) {
+	c := controller{cfg: config{Transport: []string{"/missing/lab-transport"}}}
+	if _, e := c.fencingObservation(t.Context(), 1); e == nil || !c.uncertain {
+		t.Fatal("unconfirmed worker allowed dependent work")
+	}
+	if len(c.commands) != 1 {
+		t.Fatal("unconfirmed read was retried")
+	}
+}
+
 func TestFencingNeverAcceptsUnknownOrPrimary(t *testing.T) {
 	for _, state := range []string{"unknown", "primary", "", "timeout"} {
 		if ok, _ := fencingConfirmed(probe{"state": state}); ok {

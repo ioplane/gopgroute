@@ -730,7 +730,7 @@ def ledger() -> dict:
     return {"rows": rows}
 
 
-def fencing() -> dict:
+def fencing_sql() -> dict:
     import psycopg2
 
     try:
@@ -783,6 +783,84 @@ def fencing() -> dict:
     }
 
 
+def bounded_fencing(argv: list[str], timeout: float = 6) -> dict:
+    """Worker completion and database write exclusion remain separate facts."""
+    child = subprocess.Popen(  # noqa: S603 # nosec B603 # Fixed read-only worker; tests supply an isolated child.
+        argv,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    identity: dict[str, object] = {
+        "worker_pid": child.pid,
+        "worker_start_time": None,
+        "pid_namespace": None,
+    }
+    try:
+        identity["worker_start_time"] = process_start(Path(f"/proc/{child.pid}"))
+        identity["pid_namespace"] = str(Path("/proc/self/ns/pid").stat().st_ino)
+        output, _ = child.communicate(timeout=timeout)
+    except BaseException as error:  # noqa: BLE001 # Every post-spawn failure retains ownership through bounded cleanup.
+        failure = (
+            "WorkerTimeout"
+            if isinstance(error, subprocess.TimeoutExpired)
+            else type(error).__name__
+        )
+        try:
+            child.kill()
+        except OSError as kill_error:
+            identity["kill_error"] = type(kill_error).__name__
+        try:
+            child.communicate(timeout=1)
+        except BaseException:  # noqa: BLE001 # Even interrupted cleanup must retain an unconfirmed worker.
+            return {
+                **identity,
+                "state": "unknown",
+                "sql_accepts": None,
+                "execution_stopped": False,
+                "error": "WorkerStopUnconfirmed",
+            }
+        return {
+            **identity,
+            "state": "unknown",
+            "sql_accepts": None,
+            "execution_stopped": True,
+            "error": failure,
+        }
+    if child.returncode != 0:
+        return {
+            **identity,
+            "state": "unknown",
+            "sql_accepts": None,
+            "execution_stopped": True,
+            "error": "WorkerFailed",
+        }
+    value = decode(output)
+    require(isinstance(value, dict), "invalid fencing worker response")
+    value = cast(dict, value)
+    require(
+        field(value, "state", str) in ("primary", "demoted", "refused", "unknown"),
+        "invalid fencing worker state",
+    )
+    require(
+        "sql_accepts" in value
+        and value["sql_accepts"]
+        is {"primary": True, "demoted": True, "refused": False, "unknown": None}[
+            value["state"]
+        ],
+        "inconsistent fencing worker SQL observation",
+    )
+    return {**value, **identity, "execution_stopped": True}
+
+
+def fencing() -> dict:
+    value = bounded_fencing(
+        [sys.executable, str(Path(__file__).resolve()), "fencing-sql"]
+    )
+    value["mode"] = "fencing"
+    return value
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     modes = {
@@ -792,6 +870,7 @@ def main() -> None:
         "client": client,
         "ledger": ledger,
         "fencing": fencing,
+        "fencing-sql": fencing_sql,
     }
     parser.add_argument("mode", choices=modes)
     args = parser.parse_args()

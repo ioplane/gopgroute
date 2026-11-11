@@ -37,3 +37,20 @@ separately from process proof.
 No BFD or HAProxy dependency is introduced. Route withdrawal does not replace
 Patroni/DCS/watchdog fencing. Private platform inventories and evidence stay
 outside this public repository.
+
+T4 qualification separates observation execution from the observed database
+condition. Run potentially blocking SQL probes in an owned bounded worker;
+timeout, cancellation and a kill request do not prove that worker stopped.
+Retain its process incarnation when completion is unknown and refuse a
+replacement probe or another fault until reconciliation. A completed worker
+can still report an unknown database condition. SQL demotion, fresh connection
+refusal and route withdrawal are scoped observations; none proves durable
+restart exclusion. Production admission additionally requires qualified
+watchdog/external fencing and predecessor exclusion before successor writes.
+
+Keep the current Patroni/GoPGRoute boundary. Experimental request-ordering,
+physical-work accounting and WAL-history comparators are useful specification
+inputs; pure state-machine tests do not qualify their adapters or provide a
+deployable replacement HA controller. Prioritize physical fencing evidence,
+then proven replay-lag injection, then recovery-budget diagnosis. Task status
+and exact private runtime receipts remain in the existing issue workflow.

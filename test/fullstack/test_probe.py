@@ -10,6 +10,8 @@ import copy
 import errno
 import http.client
 import json
+import os
+import subprocess
 import sys
 import types
 import unittest
@@ -19,6 +21,80 @@ import probe
 
 
 class ProbeTests(unittest.TestCase):
+    def test_fencing_envelope_keeps_outer_mode_and_worker_sample_time(self) -> None:
+        with patch.object(
+            probe,
+            "bounded_fencing",
+            return_value={"mode": "fencing-sql", "observed_at": "sample"},
+        ):
+            value = probe.fencing()
+        self.assertEqual(value["mode"], "fencing")
+        self.assertEqual(value["observed_at"], "sample")
+
+    def test_frozen_fencing_worker_is_reaped_without_claiming_fence(self) -> None:
+        value = probe.bounded_fencing(
+            [
+                sys.executable,
+                "-c",
+                "import os,signal;os.kill(os.getpid(),signal.SIGSTOP)",
+            ],
+            timeout=0.1,
+        )
+        self.assertEqual(value["state"], "unknown")
+        self.assertTrue(value["execution_stopped"])
+        self.assertEqual(value["error"], "WorkerTimeout")
+        with self.assertRaises(ProcessLookupError):
+            os.kill(value["worker_pid"], 0)
+
+    def test_fencing_worker_failure_never_proves_refusal(self) -> None:
+        value = probe.bounded_fencing([sys.executable, "-c", "raise SystemExit(1)"])
+        self.assertEqual(value["state"], "unknown")
+        self.assertTrue(value["execution_stopped"])
+
+    def test_completed_worker_must_return_a_consistent_database_observation(
+        self,
+    ) -> None:
+        value = probe.bounded_fencing(
+            [sys.executable, "-c", 'print(\'{"state":"demoted","sql_accepts":true}\')']
+        )
+        self.assertEqual(value["state"], "demoted")
+        self.assertTrue(value["execution_stopped"])
+        for raw in ('{"state":"demoted"}', '{"state":"refused","sql_accepts":true}'):
+            with self.subTest(raw=raw), self.assertRaises(probe.ProbeError):
+                probe.bounded_fencing([sys.executable, "-c", f"print({raw!r})"])
+
+    def test_unresolved_worker_remains_unknown_after_kill_request(self) -> None:
+        child = MagicMock()
+        child.pid = 123
+        child.communicate.side_effect = subprocess.TimeoutExpired("worker", 1)
+        with (
+            patch.object(probe.subprocess, "Popen", return_value=child),
+            patch.object(probe, "process_start", return_value="42"),
+        ):
+            value = probe.bounded_fencing(["fixed-worker"])
+        self.assertEqual(value["state"], "unknown")
+        self.assertFalse(value["execution_stopped"])
+        self.assertEqual(value["worker_start_time"], "42")
+        child.kill.assert_called_once()
+
+    def test_fencing_identity_and_kill_failures_retain_unknown_execution(self) -> None:
+        child = MagicMock()
+        child.pid = 123
+        child.kill.side_effect = PermissionError("private")
+        child.communicate.side_effect = subprocess.TimeoutExpired("worker", 1)
+        with (
+            patch.object(probe.subprocess, "Popen", return_value=child),
+            patch.object(
+                probe, "process_start", side_effect=PermissionError("private")
+            ),
+        ):
+            value = probe.bounded_fencing(["fixed-worker"])
+        self.assertEqual(value["worker_pid"], 123)
+        self.assertIsNone(value["worker_start_time"])
+        self.assertFalse(value["execution_stopped"])
+        self.assertEqual(value["state"], "unknown")
+        self.assertNotIn("private", json.dumps(value))
+
     def test_duplicate_and_nonfinite_json_rejected(self) -> None:
         for raw in (b'{"x":1,"x":2}', b'{"x":NaN}', b'{"x":Infinity}'):
             with self.subTest(raw=raw), self.assertRaises(probe.ProbeError):
@@ -406,14 +482,14 @@ class ProbeTests(unittest.TestCase):
             patch.dict(sys.modules, {"psycopg2": pg}),
             patch.object(probe.socket, "create_connection"),
         ):
-            value = probe.fencing()
+            value = probe.fencing_sql()
             self.assertTrue(value["sql_accepts"])
             self.assertEqual(value["state"], "primary")
             cursor.execute.assert_called_once_with("SELECT pg_is_in_recovery()")
             cursor.fetchone.return_value = (True,)
-            self.assertEqual(probe.fencing()["state"], "demoted")
+            self.assertEqual(probe.fencing_sql()["state"], "demoted")
             pg.connect.side_effect = pg.Error("private")
-            value = probe.fencing()
+            value = probe.fencing_sql()
         self.assertIsNone(value["sql_accepts"])
         self.assertEqual(value["state"], "unknown")
         self.assertNotIn("private", json.dumps(value))
@@ -428,7 +504,7 @@ class ProbeTests(unittest.TestCase):
                 side_effect=ConnectionRefusedError(errno.ECONNREFUSED, "private"),
             ) as tcp,
         ):
-            value = probe.fencing()
+            value = probe.fencing_sql()
         self.assertEqual(value["state"], "refused")
         self.assertFalse(value["sql_accepts"])
         self.assertEqual(value["refusal_errno"], errno.ECONNREFUSED)
@@ -449,7 +525,7 @@ class ProbeTests(unittest.TestCase):
                 patch.dict(sys.modules, {"psycopg2": pg}),
                 patch.object(probe.socket, "create_connection", side_effect=error),
             ):
-                value = probe.fencing()
+                value = probe.fencing_sql()
                 self.assertEqual(value["state"], "unknown")
                 self.assertIsNone(value["sql_accepts"])
         for error in (
@@ -464,7 +540,7 @@ class ProbeTests(unittest.TestCase):
                 patch.dict(sys.modules, {"psycopg2": pg}),
                 patch.object(probe.socket, "create_connection"),
             ):
-                value = probe.fencing()
+                value = probe.fencing_sql()
                 self.assertEqual(value["state"], "unknown")
                 self.assertIsNone(value["sql_accepts"])
                 self.assertNotIn("private", json.dumps(value))
