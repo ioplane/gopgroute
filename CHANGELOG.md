@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Laboratory COMMIT observations use a separate 45-second acknowledgement
+  bound instead of truncating synchronous-standby replacement at 15 seconds;
+  unknown outcomes still stop without replay.
+
 - Unchanged route intent requires bounded read-only speaker progress before
   renewing the adapter heartbeat; a frozen speaker stops reconciliation.
 

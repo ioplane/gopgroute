@@ -150,6 +150,10 @@ an unknown COMMIT outcome stops without repeating the INSERT.
 One during-fault ACK proves availability at that observation point, not
 continuous availability throughout the fault interval. `replica` selects the
 current synchronous standby; `replica2` selects the asynchronous standby.
+COMMIT acknowledgements have a separate 45-second transport bound; ordinary
+observations retain the 15-second bound. Exceeding the bound remains UNKNOWN,
+without replay. Report the measured acknowledgement delay separately from
+continuous availability or a production RTO claim.
 
 This covers the declared finite graph of faults, not arbitrary combinations,
 physical three-site isolation, hardware fencing or backup recovery. BGP edge

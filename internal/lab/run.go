@@ -277,7 +277,8 @@ func (c *controller) receipt(ctx context.Context, r *report) (probe, error) {
 			id = n + 1
 		}
 	}
-	v, e := c.execute(ctx, "client", "python3", "/lab/check.py", "receipt", strconv.Itoa(id))
+	// Synchronous-standby replacement can outlast the generic 15-second observation transport.
+	v, e := c.command(ctx, 45*time.Second, "podman", "exec", c.name("client"), "python3", "/lab/check.py", "receipt", strconv.Itoa(id))
 	var p probe
 	if e == nil {
 		e = json.Unmarshal([]byte(v.Stdout), &p)
