@@ -7,10 +7,10 @@
 from __future__ import annotations
 
 import json
-from contextlib import closing
 import subprocess  # nosec B404 # Fixed dig command, no shell or external argv.
 import sys
 import time
+from contextlib import closing
 from pathlib import Path
 
 import psycopg2
