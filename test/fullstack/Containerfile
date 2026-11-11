@@ -1,0 +1,34 @@
+ARG GO_IMAGE
+ARG PG_IMAGE
+FROM ${GO_IMAGE} AS builder
+ARG GOPROXY
+ENV GOPROXY=${GOPROXY} GOTOOLCHAIN=local CGO_ENABLED=0
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY cmd ./cmd
+COPY internal ./internal
+RUN ["go", "build", "-mod=readonly", "-trimpath", "-o", "/out/gopgroute", "./cmd/gopgroute"]
+RUN ["go", "-C", "/go/pkg/mod/github.com/osrg/gobgp/v4@v4.10.0", "build", "-mod=readonly", "-trimpath", "-o", "/out/gobgpd", "./cmd/gobgpd"]
+
+FROM ${PG_IMAGE}
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY test/fullstack/.runtime/internal.sources /etc/apt/lab.sources
+RUN ["apt-get", "-o", "Dir::Etc::sourcelist=/etc/apt/lab.sources", "-o", "Dir::Etc::sourceparts=-", "-o", "APT::Update::Error-Mode=any", "update"]
+RUN ["apt-get", "-o", "Dir::Etc::sourcelist=/etc/apt/lab.sources", "-o", "Dir::Etc::sourceparts=-", "install", "-y", "--no-install-recommends", "python3", "python3-psycopg2", "python3-etcd", "patroni", "etcd-server", "frr", "pgbouncer", "pdns-server", "pdns-backend-pgsql", "dnsutils", "iproute2", "openssl", "ca-certificates"]
+COPY --from=builder /out/ /usr/local/bin/
+COPY test/fullstack/node.py /lab/node.py
+COPY test/fullstack/check.py /lab/check.py
+ARG SOURCE_REVISION
+ARG BUILD_CREATED
+ARG PG_IMAGE
+ARG PG_DIGEST
+LABEL org.opencontainers.image.title="GoPGRoute FRR full stack lab" \
+      org.opencontainers.image.source="https://github.com/ioplane/gopgroute" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
+      org.opencontainers.image.created="${BUILD_CREATED}" \
+      org.opencontainers.image.version="unreleased-lab" \
+      org.opencontainers.image.description="Isolated three-site PostgreSQL and FRR test fixture" \
+      org.opencontainers.image.base.name="${PG_IMAGE}" \
+      org.opencontainers.image.base.digest="${PG_DIGEST}"
+ENTRYPOINT ["/usr/bin/python3", "/lab/node.py"]

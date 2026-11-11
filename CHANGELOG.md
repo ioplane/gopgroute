@@ -7,6 +7,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Isolated Podman Compose full stack fixture with three PostgreSQL/Patroni
+  sites, etcd, PgBouncer, supervised GoBGP, FRR leaves and a routed SQL/PowerDNS
+  client. Checks distinguish role eligibility and acknowledged transactions;
+  persistent speaker restart remains a separate acceptance gate.
+
 - Linux daemon candidate with sealed child settings, a digest-pinned external
   speaker, exec-thread parent-death protection, read-only policy admission and
   role-bound SQL cycles. Configuration fuzzing, exhaustive role combinations,
