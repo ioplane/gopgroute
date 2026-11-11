@@ -28,6 +28,11 @@ T3 consists of subtracks, each with an independent plan/ADR/spec review:
 The daemon remains a source candidate. An open PR and green CI do not close
 T3.4 or authorize T4. The [daemon contract](06-daemon-contract.md) and
 [ADR 0005](adr/0005-sealed-daemon-incarnation.md) bind the integration.
+[ADR 0006](adr/0006-inherited-incarnation-leases.md) binds restart recovery:
+require lease retention across speaker exec, refusal while either child holds
+a lease, unchanged old journals and fresh-UUID native SQL announcement after
+clean shutdown and guardian SIGKILL. Qualify peer RIB/FIB and transactions
+separately from process proof.
 
 No BFD or HAProxy dependency is introduced. Route withdrawal does not replace
 Patroni/DCS/watchdog fencing. Private platform inventories and evidence stay

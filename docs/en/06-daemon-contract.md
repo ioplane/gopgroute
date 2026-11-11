@@ -7,7 +7,8 @@ Start from the [example](../../configs/gopgroute.example.json), replacing the
 zero digest with the approved upstream `gobgpd` artifact's SHA-256. The example
 is not a deployment manifest. VIP binding, PgBouncer, Patroni and PostgreSQL
 are provisioned separately. There is no privileged port listener, callback API,
-automatic restart or journal-reset option in this candidate.
+internal respawn loop or journal-reset option in this candidate. A service
+manager may restart the whole guardian under [ADR 0006](adr/0006-inherited-incarnation-leases.md).
 
 ## Startup and trust
 
@@ -21,9 +22,12 @@ All endpoints, identities and durations are explicit; lag zero is valid but
 `max_lag_bytes` must be present. Public examples use documentation addresses.
 
 The pre-existing runtime and journal directories must be distinct, service-owned
-mode 0700 directories with trusted ancestors. A nonblocking guardian lock and
-an unoccupied `speaker.sock` are required. Existing socket entries are never
-removed or adopted. Configuration is serialized into canonical, sealed memfd
+mode 0700 roots with trusted ancestors and stable inodes. Guardian leases in
+both roots are inherited by both children and retained through exec. Each
+start synchronizes new private generation directories; old journals and
+sockets are never reused, removed or adopted. Legacy flat state and unknown
+root entries require explicit migration after old-process death is proven.
+Configuration and credentials reside outside the roots. Configuration is serialized into canonical, sealed memfd
 snapshots for the children, including the expected guardian PID. Each child has
 its own file offset. Internal `_speaker` and `_adapter` roles require these
 snapshots; operators start only the guardian command above.
@@ -102,7 +106,8 @@ the exact delivered `gobgpd` artifact still needs separate qualification.
 No BGP peer or client transaction is qualified by these RIB tests. Apply
 [RFC 8212](https://www.rfc-editor.org/rfc/rfc8212.html) policy requirements and
 measure [RFC 4724](https://www.rfc-editor.org/rfc/rfc4724.html#section-4.2)
-stale retention on actual peers. Clean restart/recovery of occupied sockets or
-old UUID journals requires separate evidence and an explicit operator procedure.
-The candidate never resets them automatically. Patroni/DCS/watchdog fencing,
+stale retention on actual peers. Legacy occupied sockets and flat UUID journals
+require a separate migration procedure. New-protocol restart uses inherited
+leases and fresh directories, preserving previous state without UUID replay.
+Patroni/DCS/watchdog fencing,
 backup/restore, three-site quorum and client outcomes remain T3/T4 gates.

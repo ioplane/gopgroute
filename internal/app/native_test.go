@@ -147,7 +147,10 @@ func TestNativeDaemonSQLRouteLifecycle(t *testing.T) {
 	speaker, adapter := childCommand("speaker"), childCommand("adapter")
 	ctx, stop := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- Guardian(ctx, cfg, speaker, adapter); close(done) }()
+	go func(ctx context.Context, speaker, adapter *exec.Cmd, done chan error) {
+		done <- Guardian(ctx, cfg, speaker, adapter)
+		close(done)
+	}(ctx, speaker, adapter, done)
 	t.Cleanup(func() {
 		stop()
 		select {
@@ -159,7 +162,7 @@ func TestNativeDaemonSQLRouteLifecycle(t *testing.T) {
 			t.Error("guardian did not reap native children")
 		}
 	})
-	connection, err := grpc.NewClient("unix://"+cfg.socket(), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDisableRetry())
+	connection, err := grpc.NewClient("unix://"+liveSocket(t, cfg), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDisableRetry())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,6 +199,34 @@ func TestNativeDaemonSQLRouteLifecycle(t *testing.T) {
 			t.Fatalf("native RIB did not become %q: %v", want, err)
 		}
 	}
+	assertRIB(cfg.Write.String())
+	// Restart the whole incarnation with the same roots and an owned UUID journal.
+	stop()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("first shutdown: %v", err)
+	}
+	previousSocket := strings.TrimPrefix(connection.Target(), "unix://")
+	speaker, adapter = childCommand("speaker"), childCommand("adapter")
+	ctx, stop = context.WithCancel(t.Context())
+	done = make(chan error, 1)
+	go func(ctx context.Context, speaker, adapter *exec.Cmd, done chan error) {
+		done <- Guardian(ctx, cfg, speaker, adapter)
+		close(done)
+	}(ctx, speaker, adapter, done)
+	newSocket := liveSocket(t, cfg)
+	if newSocket == previousSocket {
+		t.Fatal("speaker socket reused across incarnations")
+	}
+	second, err := grpc.NewClient("unix://"+newSocket, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDisableRetry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := second.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	client = api.NewGoBgpServiceClient(second)
 	assertRIB(cfg.Write.String())
 	replica.Store(true)
 	assertRIB("") // Patroni replica and writable primary SQL must never combine.

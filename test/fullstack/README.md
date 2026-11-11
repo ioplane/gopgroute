@@ -64,17 +64,21 @@ database fencing. Resume suspended processes before leaving the lab.
 
 ## Restart boundary
 
-Journals are never reset automatically. A new speaker has an empty RIB while
-a persistent journal can retain old UUIDs. The daemon deliberately refuses
-those unknown UUIDs. This is a failed automatic-restart acceptance criterion.
+The guardian uses [inherited incarnation leases](../../docs/en/adr/0006-inherited-incarnation-leases.md)
+and creates new journal/socket subdirectories on each start. Both children
+retain both root locks; the next guardian must fail while either lease is
+held. Old journals remain unchanged, including uncertain states. Restart the
+whole route service with the same configuration; never restart a speaker alone.
+The daemon has no internal respawn loop; this fixture does not add a restart policy.
 
-An operator may provision separate new private journal/runtime directories for
-further isolated experiments only after proving the old speaker cgroup is
-empty, affected peers are down with GR disabled, and neither VIP retains an
-old path. Preserve and hash previous journals. Never delete, rewrite, adopt
-or retry uncertain UUIDs. Start the normal guardian and verify new ownership,
-RIB/FIB and client results. This manual procedure does not qualify automatic
-restart; see the [ownership contract](../../docs/en/03-route-ownership.md).
+Legacy flat roots require one explicit migration: prove the old route cgroup
+empty, affected peers down with GR disabled and old next hops absent; preserve
+and hash old journals, then provision empty private roots. The new protocol
+cannot prove death of legacy processes that did not inherit its leases. Keep
+at least the journal root and its lock inode stable across container recreation.
+After migration, repeat clean stop/start and guardian SIGKILL/start with
+unchanged roots. Verify distinct UUID journals, old bytes unchanged, both VIPs
+in peer RIB/kernel FIB, client SQL/DNS and acknowledged transactions.
 
 This single-host emulation does not qualify independent physical failure
 domains, hardware watchdog fencing, storage failures, backup/PITR, production

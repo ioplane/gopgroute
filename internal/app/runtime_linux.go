@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -77,25 +76,24 @@ func Guardian(ctx context.Context, cfg Config, speaker, adapter *exec.Cmd) (resu
 	if _, _, err := cfg.probes(); err != nil {
 		return err
 	}
-	fd, err := unix.Open(filepath.Join(cfg.RuntimeDir, "guardian.lock"), unix.O_CREAT|unix.O_RDWR|unix.O_NOFOLLOW|unix.O_NONBLOCK|unix.O_CLOEXEC, 0o600)
+	var leases []*os.File
+	defer func() {
+		for _, lease := range leases {
+			result = errors.Join(result, lease.Close())
+		}
+	}()
+	for _, dir := range []string{cfg.RuntimeDir, cfg.JournalDir} {
+		lease, err := incarnationLease(dir)
+		if err != nil {
+			return err
+		}
+		leases = append(leases, lease)
+	}
+	incarnation, err := newIncarnation(cfg)
 	if err != nil {
 		return err
 	}
-	lock := os.NewFile(uintptr(fd), "guardian-lock")
-	defer func() { result = errors.Join(result, lock.Close()) }()
-	var stat unix.Stat_t
-	if err := unix.Fstat(fd, &stat); err != nil {
-		return err
-	}
-	if stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Mode&0o7777 != 0o600 || int64(stat.Uid) != int64(os.Geteuid()) || stat.Nlink != 1 {
-		return errors.New("invalid guardian lock identity")
-	}
-	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		return fmt.Errorf("lock guardian: %w", err)
-	}
-	if _, err := os.Lstat(cfg.socket()); !errors.Is(err, os.ErrNotExist) { // #nosec G703 -- Canonical socket path under the admitted service-owned directory.
-		return errors.New("runtime socket occupied or inaccessible; recovery required")
-	}
+	cfg = incarnation
 	for _, cmd := range []*exec.Cmd{speaker, adapter} {
 		settings, err := snapshot(cfg)
 		if err != nil {
@@ -104,7 +102,7 @@ func Guardian(ctx context.Context, cfg Config, speaker, adapter *exec.Cmd) (resu
 		defer func() { result = errors.Join(result, settings.Close()) }()
 		cmd.Stdin = settings
 	}
-	return supervisor.Run(ctx, supervisor.Config{Speaker: speaker, Adapter: adapter, HeartbeatTimeout: time.Duration(cfg.HeartbeatTimeout), StopTimeout: time.Duration(cfg.StopTimeout)})
+	return supervisor.Run(ctx, supervisor.Config{Speaker: speaker, Adapter: adapter, OwnershipFiles: leases, HeartbeatTimeout: time.Duration(cfg.HeartbeatTimeout), StopTimeout: time.Duration(cfg.StopTimeout)})
 }
 
 // Speaker replaces only the guardian-owned child with the pinned upstream daemon.

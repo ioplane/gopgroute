@@ -60,6 +60,9 @@ uncertainty, not evidence of withdrawal. T3 must stop the dedicated speaker on
 manager crash, stall or uncertain state and account for peer graceful restart.
 Resetting a journal requires a separate proven-clean speaker incarnation;
 there is deliberately no automatic reset or unsafe recovery switch in T2.
+T3 [incarnation leases](adr/0006-inherited-incarnation-leases.md) retire the whole
+dedicated process pair and provision separate T2 directories after exclusive
+lease acquisition. They never feed an old journal to a new speaker.
 An active manager is valid only for one speaker incarnation. T3 must terminate
 it when the supervised speaker exits, restarts or is replaced, and perform
 startup reconciliation with a new manager. `Reconcile` returning nil means

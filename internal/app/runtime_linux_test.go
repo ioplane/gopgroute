@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -112,6 +113,37 @@ func childCommand(mode string) *exec.Cmd {
 	return cmd
 }
 
+func liveSocket(t *testing.T, cfg Config) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	var socket string
+	if err := waitUntil(ctx, func() (bool, error) {
+		paths := []string{cfg.socket()}
+		entries, err := os.ReadDir(cfg.RuntimeDir)
+		if err != nil {
+			return false, err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() && strings.HasPrefix(entry.Name(), "i-") {
+				paths = append(paths, filepath.Join(cfg.RuntimeDir, entry.Name(), "speaker.sock"))
+			}
+		}
+		for _, path := range paths {
+			connection, err := net.DialTimeout("unix", path, 20*time.Millisecond)
+			if err != nil {
+				continue
+			}
+			socket = path
+			return true, connection.Close()
+		}
+		return false, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return socket
+}
+
 func TestGuardianRejectsOccupiedRuntimeBeforeStartingChildren(t *testing.T) {
 	cfg := testConfig(t)
 	if err := os.WriteFile(filepath.Join(cfg.RuntimeDir, "speaker.sock"), []byte("foreign"), 0o600); err != nil {
@@ -158,7 +190,7 @@ func TestRunnableDaemonDeniesRoutesWithoutSQL(t *testing.T) {
 			t.Error("guardian did not reap children")
 		}
 	})
-	connection, err := grpc.NewClient("unix://"+filepath.Join(cfg.RuntimeDir, "speaker.sock"), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDisableRetry())
+	connection, err := grpc.NewClient("unix://"+liveSocket(t, cfg), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDisableRetry())
 	if err != nil {
 		t.Fatal(err)
 	}

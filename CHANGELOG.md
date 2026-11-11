@@ -5,6 +5,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Whole-guardian restart uses inherited runtime/journal leases and fresh
+  incarnation directories instead of replaying old speaker UUIDs. Previous
+  journals remain intact; legacy flat state requires explicit migration.
+
 ### Security
 
 - Go 1.27.4 rebuilds runtime and SQL fixtures with the standard-library fix for

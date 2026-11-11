@@ -20,8 +20,11 @@ import (
 // create copying goroutines that wait on arbitrary caller I/O. ExtraFiles,
 // Cancel and SysProcAttr must be unset. The adapter receives its private
 // heartbeat pipe at fd 3 and must send '+' after each completed reconciliation.
+// OwnershipFiles remain caller-owned and are inherited by both children (speaker
+// fd 3+i, adapter fd 4+i). They must stay open through exec and must never be unlocked.
 type Config struct {
 	Speaker, Adapter              *exec.Cmd
+	OwnershipFiles                []*os.File
 	HeartbeatTimeout, StopTimeout time.Duration
 }
 
@@ -54,6 +57,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 			<-readerDone
 		}
 	}()
+	cfg.Speaker.ExtraFiles = append([]*os.File(nil), cfg.OwnershipFiles...)
 	speaker, err = startOwned("speaker", cfg.Speaker, cfg.StopTimeout)
 	if err != nil {
 		return err
@@ -61,7 +65,7 @@ func Run(ctx context.Context, cfg Config) (err error) {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("start adapter: %w", err)
 	}
-	cfg.Adapter.ExtraFiles = []*os.File{write}
+	cfg.Adapter.ExtraFiles = append([]*os.File{write}, cfg.OwnershipFiles...)
 	adapter, err = startOwned("adapter", cfg.Adapter, cfg.StopTimeout)
 	if err != nil {
 		return err
@@ -110,6 +114,14 @@ func validate(cfg Config) error {
 	}
 	if cfg.HeartbeatTimeout <= 0 || cfg.StopTimeout <= 0 {
 		return errors.New("supervision requires positive heartbeat and stop timeouts")
+	}
+	for _, file := range cfg.OwnershipFiles {
+		if file == nil {
+			return errors.New("nil ownership file")
+		}
+		if _, err := file.Stat(); err != nil {
+			return fmt.Errorf("ownership file: %w", err)
+		}
 	}
 	for _, cmd := range []*exec.Cmd{cfg.Speaker, cfg.Adapter} {
 		if cmd.Process != nil || len(cmd.ExtraFiles) != 0 || cmd.Cancel != nil || cmd.SysProcAttr != nil {

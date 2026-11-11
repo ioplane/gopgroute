@@ -42,7 +42,7 @@ func TestGuardianDeathKillsExecSpeakerAndAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(cfg.RuntimeDir, "config.json")
+	path := filepath.Join(filepath.Dir(cfg.RuntimeDir), "config.json")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestGuardianDeathKillsExecSpeakerAndAdapter(t *testing.T) {
 			}
 		}
 	})
-	connection, err := grpc.NewClient("unix://"+cfg.socket(), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDisableRetry())
+	connection, err := grpc.NewClient("unix://"+liveSocket(t, cfg), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDisableRetry())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +99,23 @@ func TestGuardianDeathKillsExecSpeakerAndAdapter(t *testing.T) {
 			if err != nil || pid <= 0 {
 				t.Fatal("invalid owned child PID")
 			}
+			// Both direct children must retain both leases, including after speaker exec.
+			for _, dir := range []string{cfg.RuntimeDir, cfg.JournalDir} {
+				lease, err := os.Stat(filepath.Join(dir, "guardian.lock"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, descriptor := range []string{"3", "4", "5"} {
+					inherited, err := os.Stat(fmt.Sprintf("/proc/%d/fd/%s", pid, descriptor))
+					if err == nil && os.SameFile(lease, inherited) {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatal("supervised child missing inherited incarnation lease")
+				}
+			}
 			fd, err := unix.PidfdOpen(pid, 0)
 			if err != nil {
 				t.Fatal(err)
@@ -128,5 +145,30 @@ func TestGuardianDeathKillsExecSpeakerAndAdapter(t *testing.T) {
 		if n, err := unix.Poll(poll, 2000); err != nil || n != 1 || poll[0].Revents&unix.POLLIN == 0 {
 			t.Fatalf("exec child survived guardian death: n=%d err=%v", n, err)
 		}
+	}
+	oldSocket := strings.TrimPrefix(connection.Target(), "unix://")
+	guardian = exec.Command(os.Args[0], "-test.run=^TestCLIParentHelper$", "--", path) // #nosec G204 G702 -- Restart the same test guardian with unchanged configuration.
+	guardian.Env = append(os.Environ(), "GOPGROUTE_CLI_PARENT=1", "GORACE=atexit_sleep_ms=0")
+	guardian.Stderr = os.Stderr
+	if err := guardian.Start(); err != nil {
+		t.Fatal(err)
+	}
+	newSocket := liveSocket(t, cfg)
+	if newSocket == oldSocket {
+		t.Fatal("SIGKILL restart reused speaker socket")
+	}
+	second, err := grpc.NewClient("unix://"+newSocket, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDisableRetry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := second.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	restarted, finish := context.WithTimeout(t.Context(), 3*time.Second)
+	defer finish()
+	if err := waitUntil(restarted, func() (bool, error) { return speakerReady(restarted, api.NewGoBgpServiceClient(second), cfg) }); err != nil {
+		t.Fatal(err)
 	}
 }

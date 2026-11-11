@@ -25,7 +25,9 @@ the complete cycle must succeed before heartbeat.
 ## Consequences
 
 There is no shell, default TCP management listener, automatic journal reset or
-restart. Occupied sockets and old UUID journals fail closed. Native config,
+internal respawn loop. Legacy occupied sockets and flat UUID journals fail
+closed. [ADR 0006](0006-inherited-incarnation-leases.md) adds inherited leases
+and fresh generation directories for whole-guardian restart. Native config,
 process and SQL/RIB tests do not qualify peer forwarding, fencing or three-site
 HA. The [daemon contract](../06-daemon-contract.md) defines the boundaries;
 the [implementation tracks](../implementation-plan.md) retain later gates.
