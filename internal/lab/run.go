@@ -332,13 +332,13 @@ func nativeSuite(ctx context.Context, dir string) (map[string]bool, commandResul
 	args := []string{"test", "-json", "-race", "-shuffle=on", "-count=1", "-timeout=120s", "./internal/app", "./internal/gobgp", "./internal/health", "./internal/pooler", "./internal/supervisor"}
 	call, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(call, "go", args...)
+	cmd := exec.CommandContext(call, "/usr/local/go/bin/go", args...)
 	cmd.Dir = dir
 	out, stderr := &boundedBuffer{maximum: 1 << 20}, &boundedBuffer{maximum: 64 << 10}
 	cmd.Stdout, cmd.Stderr = out, stderr
 	t0 := time.Now()
 	e := cmd.Run()
-	r := commandResult{Args: append([]string{"go"}, args...), Stdout: out.String(), Stderr: stderr.String(), Seconds: time.Since(t0).Seconds()}
+	r := commandResult{Args: append([]string{"/usr/local/go/bin/go"}, args...), Stdout: out.String(), Stderr: stderr.String(), Seconds: time.Since(t0).Seconds()}
 	if e != nil {
 		r.Exit = 1
 		return nil, r, e
