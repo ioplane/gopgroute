@@ -67,6 +67,7 @@ services:
     networks: {clients: {ipv4_address: 198.19.0.10}}
   route1:
     <<: *common
+    restart: on-failure:3
     command: [route]
     network_mode: service:db1
     depends_on: [db1]
@@ -74,6 +75,7 @@ services:
     volumes: ['${LAB_DATA}/db1:/state', '${LAB_CODE}:/lab:ro']
   route2:
     <<: *common
+    restart: on-failure:3
     command: [route]
     network_mode: service:db2
     depends_on: [db2]
@@ -81,6 +83,7 @@ services:
     volumes: ['${LAB_DATA}/db2:/state', '${LAB_CODE}:/lab:ro']
   route3:
     <<: *common
+    restart: on-failure:3
     command: [route]
     network_mode: service:db3
     depends_on: [db3]

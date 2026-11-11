@@ -69,7 +69,9 @@ and creates new journal/socket subdirectories on each start. Both children
 retain both root locks; the next guardian must fail while either lease is
 held. Old journals remain unchanged, including uncertain states. Restart the
 whole route service with the same configuration; never restart a speaker alone.
-The daemon has no internal respawn loop; this fixture does not add a restart policy.
+The daemon has no internal respawn loop. Route containers use bounded Podman
+`on-failure:3` restart; explicit `podman stop`/`kill` suppress that policy.
+Inject guardian SIGKILL inside the container to test automatic recovery.
 
 Legacy flat roots require one explicit migration: prove the old route cgroup
 empty, affected peers down with GR disabled and old next hops absent; preserve

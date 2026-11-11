@@ -10,6 +10,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Whole-guardian restart uses inherited runtime/journal leases and fresh
   incarnation directories instead of replaying old speaker UUIDs. Previous
   journals remain intact; legacy flat state requires explicit migration.
+  Lab route containers retry failed guardian exits up to three times.
 
 ### Security
 
