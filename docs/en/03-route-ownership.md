@@ -67,7 +67,8 @@ An active manager is valid only for one speaker incarnation. T3 must terminate
 it when the supervised speaker exits, restarts or is replaced, and perform
 startup reconciliation with a new manager. `Reconcile` returning nil means
 that the requested library operations completed; it is not RIB attestation.
-An unchanged owned intent does not issue another RPC. ListPath cannot prove
+An unchanged owned intent does not repeat route mutations. Each cycle requires
+a bounded read-only GetBgp response before reporting progress. ListPath cannot prove
 continued UUID identity even if the same prefix remains visible.
 
 ## Transport and verification

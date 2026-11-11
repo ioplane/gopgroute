@@ -13,7 +13,7 @@ import (
 
 func TestFiniteCatalogHasUniqueCompleteCases(t *testing.T) {
 	plan := catalog()
-	if len(plan) != 48 {
+	if len(plan) != 57 {
 		t.Fatalf("modeled cases=%d", len(plan))
 	}
 	seen := map[string]bool{}
@@ -25,6 +25,27 @@ func TestFiniteCatalogHasUniqueCompleteCases(t *testing.T) {
 		if sc.Kind == "native" && nativeTest(sc.ID) == "" {
 			t.Fatal("native case has no executable oracle")
 		}
+	}
+}
+
+func TestFencingNeverAcceptsUnknownOrPrimary(t *testing.T) {
+	for _, state := range []string{"unknown", "primary", "", "timeout"} {
+		if ok, _ := fencingConfirmed(probe{"state": state}); ok {
+			t.Fatalf("unsafe fencing: %s", state)
+		}
+	}
+	for _, state := range []string{"demoted", "refused"} {
+		if ok, e := fencingConfirmed(probe{"state": state}); e != nil || !ok {
+			t.Fatalf("rejected fencing: %s %v", state, e)
+		}
+	}
+}
+
+func TestReplicaRolesFollowSynchronousState(t *testing.T) {
+	s := snapshot{Nodes: map[string]probe{"1": {"postgres": map[string]any{"recovery": false, "replication": []any{map[string]any{"application_name": "db3", "sync_state": "sync"}, map[string]any{"application_name": "db2", "sync_state": "async"}}}, "patroni": map[string]any{"role": "primary"}}, "2": {"postgres": map[string]any{"recovery": true}, "patroni": map[string]any{"role": "replica"}}, "3": {"postgres": map[string]any{"recovery": true}, "patroni": map[string]any{"role": "replica"}}}}
+	p, r, e := s.roles()
+	if e != nil || p != 1 || len(r) != 2 || r[0] != 3 || r[1] != 2 {
+		t.Fatalf("role selection %d %v %v", p, r, e)
 	}
 }
 
@@ -68,7 +89,7 @@ func TestDryRunCannotContactTransportOrCreateReport(t *testing.T) {
 		DryRun    bool       `json:"dry_run"`
 		Scenarios []scenario `json:"scenarios"`
 	}
-	if e := json.Unmarshal(out.Bytes(), &plan); e != nil || !plan.DryRun || len(plan.Scenarios) != 48 {
+	if e := json.Unmarshal(out.Bytes(), &plan); e != nil || !plan.DryRun || len(plan.Scenarios) != 57 {
 		t.Fatalf("invalid dryrun: %v", e)
 	}
 }

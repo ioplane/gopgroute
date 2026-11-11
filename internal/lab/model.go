@@ -25,7 +25,7 @@ func catalog() []scenario {
 	for i := 1; i <= 3; i++ {
 		r = append(r, scenario{ID: fmt.Sprintf("switchover-db%d", i), Kind: "switch", Node: i})
 	}
-	for _, role := range []string{"primary", "replica"} {
+	for _, role := range []string{"primary", "replica", "replica2"} {
 		for _, actor := range []string{"guardian", "adapter", "speaker"} {
 			for _, sig := range []string{"KILL", "STOP"} {
 				r = append(r, scenario{ID: strings.ToLower(role + "-" + actor + "-" + sig), Kind: "route", Role: role, Actor: actor, Signal: sig})
@@ -131,6 +131,52 @@ func (s snapshot) roles() (int, []int, error) {
 	if primary == 0 || len(replicas) != 2 {
 		return 0, nil, errors.New("incomplete PostgreSQL topology")
 	}
+	rows, e := s.Nodes[strconv.Itoa(primary)].list("postgres", "replication")
+	if e != nil {
+		return 0, nil, e
+	}
+	syncNode, asyncNode := 0, 0
+	for _, v := range rows {
+		row, e := object(v)
+		if e != nil {
+			return 0, nil, e
+		}
+		name, e := row.text("application_name")
+		if e != nil {
+			return 0, nil, e
+		}
+		state, e := row.text("sync_state")
+		if e != nil {
+			return 0, nil, e
+		}
+		node := 0
+		for _, n := range replicas {
+			if name == fmt.Sprintf("db%d", n) {
+				node = n
+			}
+		}
+		if node == 0 {
+			return 0, nil, errors.New("unknown replication identity")
+		}
+		switch state {
+		case "sync", "quorum":
+			if syncNode != 0 {
+				return 0, nil, errors.New("multiple synchronous replicas")
+			}
+			syncNode = node
+		case "async", "potential":
+			if asyncNode != 0 {
+				return 0, nil, errors.New("multiple asynchronous replicas")
+			}
+			asyncNode = node
+		default:
+			return 0, nil, errors.New("unknown synchronous state")
+		}
+	}
+	if syncNode == 0 || asyncNode == 0 {
+		return 0, nil, errors.New("synchronous and asynchronous replica required")
+	}
+	replicas = []int{syncNode, asyncNode}
 	return primary, replicas, nil
 }
 
@@ -182,7 +228,18 @@ func (s snapshot) healthy() error {
 	if synchronous != 1 {
 		return errors.New("effective synchronous standby count is not one")
 	}
-	for _, l := range s.Leaves {
+	for node, l := range s.Leaves {
+		prefixes, e := l.list("local_origin_prefixes")
+		if e != nil {
+			return e
+		}
+		want := "198.19.255.11/32"
+		if node == strconv.Itoa(p) {
+			want = "198.19.255.10/32"
+		}
+		if len(prefixes) != 1 || prefixes[0] != want {
+			return errors.New("local GoBGP origin does not match PostgreSQL role")
+		}
 		peers, e := l.list("peers")
 		if e != nil || len(peers) != 3 {
 			return errors.Join(e, errors.New("three peers per leaf required"))

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import copy
+import errno
 import http.client
 import json
 import sys
@@ -187,8 +188,11 @@ class ProbeTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(probe.ProbeError):
                 probe.peers(value)
 
-    def test_rib_and_kernel_are_independent_observations(self) -> None:
+    def test_installation_requires_rib_and_kernel_agreement(self) -> None:
         prefix = probe.VIPS["write"]
+        kernel = [
+            {"dst": prefix.removesuffix("/32"), "gateway": "192.0.2.10", "dev": "eth0"}
+        ]
         result = probe.fib(
             {
                 prefix: [
@@ -196,11 +200,85 @@ class ProbeTests(unittest.TestCase):
                 ]
             },
             prefix,
-            [],
+            kernel,
         )
         self.assertTrue(result["installed"])
-        self.assertEqual(result["kernel_routes"], [])
-        self.assertFalse(probe.fib({}, prefix, [])["installed"])
+        self.assertTrue(result["rib_installed"])
+        self.assertTrue(result["kernel_installed"])
+        empty = probe.fib({}, prefix, [])
+        self.assertFalse(empty["installed"])
+        self.assertFalse(empty["rib_installed"])
+        self.assertFalse(empty["kernel_installed"])
+
+    def test_rib_kernel_mismatch_and_residual_routes_are_rejected(self) -> None:
+        prefix = probe.VIPS["write"]
+        rib = {
+            prefix: [
+                {"installed": True, "nexthops": [{"ip": "192.0.2.10", "fib": True}]}
+            ]
+        }
+        kernel = [{"dst": prefix, "gateway": "192.0.2.10", "dev": "eth0"}]
+        for rows, routes in (
+            (rib, []),
+            ({}, kernel),
+            (rib, [{**kernel[0], "gateway": "192.0.2.11"}]),
+            (rib, [{**kernel[0], "type": "blackhole"}]),
+        ):
+            with (
+                self.subTest(rib=rows, kernel=routes),
+                self.assertRaises(probe.ProbeError),
+            ):
+                probe.fib(rows, prefix, routes)
+
+    @staticmethod
+    def origin_rows() -> dict:
+        prefix = probe.VIPS["read"]
+        return {
+            "routes": {
+                prefix: [
+                    {
+                        "valid": True,
+                        "bestpath": False,
+                        "prefix": prefix.removesuffix("/32"),
+                        "prefixLen": 32,
+                        "network": prefix,
+                        "peerId": probe.IPS[1],
+                        "path": "64521",
+                        "nexthops": [{"ip": probe.IPS[1], "afi": "ipv4", "used": True}],
+                    }
+                ]
+            },
+            "totalRoutes": 1,
+        }
+
+    def test_local_origins_are_independent_of_selected_bestpath(self) -> None:
+        self.assertEqual(
+            probe.origin_prefixes(self.origin_rows(), probe.IPS[1]),
+            [probe.VIPS["read"]],
+        )
+        self.assertEqual(
+            probe.origin_prefixes({"routes": {}, "totalRoutes": 0}, probe.IPS[1]), []
+        )
+
+    def test_malformed_foreign_or_wrong_peer_origin_is_rejected(self) -> None:
+        for key, replacement in (
+            ("peerId", probe.IPS[2]),
+            ("network", probe.VIPS["write"]),
+            ("valid", False),
+            ("path", "64522"),
+            ("nexthops", []),
+        ):
+            value = self.origin_rows()
+            value["routes"][probe.VIPS["read"]][0][key] = replacement
+            with self.subTest(key=key), self.assertRaises(probe.ProbeError):
+                probe.origin_prefixes(value, probe.IPS[1])
+        for value in (
+            {},
+            {"routes": [], "totalRoutes": 0},
+            {"routes": {"192.0.2.0/24": []}, "totalRoutes": 1},
+        ):
+            with self.subTest(value=value), self.assertRaises(probe.ProbeError):
+                probe.origin_prefixes(value, probe.IPS[1])
 
     def test_missing_fib_flag_or_foreign_prefix_rejected(self) -> None:
         prefix = probe.VIPS["write"]
@@ -324,13 +402,72 @@ class ProbeTests(unittest.TestCase):
     def test_fencing_observes_read_acceptance_without_writing(self) -> None:
         pg, _, cursor = self.fake_pg()
         cursor.fetchone.return_value = (False,)
-        with patch.dict(sys.modules, {"psycopg2": pg}):
-            self.assertTrue(probe.fencing()["sql_accepts"])
+        with (
+            patch.dict(sys.modules, {"psycopg2": pg}),
+            patch.object(probe.socket, "create_connection"),
+        ):
+            value = probe.fencing()
+            self.assertTrue(value["sql_accepts"])
+            self.assertEqual(value["state"], "primary")
             cursor.execute.assert_called_once_with("SELECT pg_is_in_recovery()")
+            cursor.fetchone.return_value = (True,)
+            self.assertEqual(probe.fencing()["state"], "demoted")
             pg.connect.side_effect = pg.Error("private")
             value = probe.fencing()
-        self.assertFalse(value["sql_accepts"])
+        self.assertIsNone(value["sql_accepts"])
+        self.assertEqual(value["state"], "unknown")
         self.assertNotIn("private", json.dumps(value))
+
+    def test_fencing_refused_requires_native_backend_econnrefused(self) -> None:
+        pg, _, _ = self.fake_pg()
+        with (
+            patch.dict(sys.modules, {"psycopg2": pg}),
+            patch.object(
+                probe.socket,
+                "create_connection",
+                side_effect=ConnectionRefusedError(errno.ECONNREFUSED, "private"),
+            ) as tcp,
+        ):
+            value = probe.fencing()
+        self.assertEqual(value["state"], "refused")
+        self.assertFalse(value["sql_accepts"])
+        self.assertEqual(value["refusal_errno"], errno.ECONNREFUSED)
+        self.assertNotIn("private", json.dumps(value))
+        tcp.assert_called_once_with(("127.0.0.1", 5432), timeout=2)
+        pg.connect.assert_not_called()
+
+    def test_fencing_timeouts_auth_query_and_os_errors_never_mean_fenced(self) -> None:
+        pg, _, cursor = self.fake_pg()
+        for error in (
+            TimeoutError(),
+            PermissionError(),
+            OSError(errno.EIO, "Connection refused"),
+            ConnectionRefusedError("Connection refused"),
+        ):
+            with (
+                self.subTest(error=type(error).__name__),
+                patch.dict(sys.modules, {"psycopg2": pg}),
+                patch.object(probe.socket, "create_connection", side_effect=error),
+            ):
+                value = probe.fencing()
+                self.assertEqual(value["state"], "unknown")
+                self.assertIsNone(value["sql_accepts"])
+        for error in (
+            pg.Error("auth failure private"),
+            pg.Error("query timeout private"),
+            TimeoutError(),
+            OSError(errno.ECONNREFUSED, "private"),
+        ):
+            cursor.execute.side_effect = error
+            with (
+                self.subTest(query_error=type(error).__name__),
+                patch.dict(sys.modules, {"psycopg2": pg}),
+                patch.object(probe.socket, "create_connection"),
+            ):
+                value = probe.fencing()
+                self.assertEqual(value["state"], "unknown")
+                self.assertIsNone(value["sql_accepts"])
+                self.assertNotIn("private", json.dumps(value))
 
 
 if __name__ == "__main__":

@@ -7,6 +7,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Unchanged route intent requires bounded read-only speaker progress before
+  renewing the adapter heartbeat; a frozen speaker stops reconciliation.
+
 - Whole-guardian restart uses inherited runtime/journal leases and fresh
   incarnation directories instead of replaying old speaker UUIDs. Previous
   journals remain intact; legacy flat state requires explicit migration.
@@ -20,7 +23,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- A finite 48-case GoBGP/Patroni fault campaign with bounded remote execution,
+- A finite 57-case GoBGP/Patroni fault campaign with bounded remote execution,
   exact isolated-lab admission, registered recovery, transaction/journal
   checks and private JSON/Markdown reports. Expected limitations and blocked
   cases remain distinct from passing invariants; ambiguous mutations are not

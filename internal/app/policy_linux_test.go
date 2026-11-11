@@ -3,16 +3,19 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/ioplane/gopgroute/internal/gobgp"
 	"github.com/ioplane/gopgroute/internal/health"
+	"github.com/ioplane/gopgroute/internal/reconcile"
 	"github.com/osrg/gobgp/v4/api"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -88,4 +91,27 @@ func TestNativeSpeakerPolicyAdmitsOwnedLocalPath(t *testing.T) {
 	if _, err := stream.Recv(); !errors.Is(err, io.EOF) {
 		t.Fatalf("unexpected native path: %v", err)
 	}
+	t.Run("frozen_speaker_cannot_renew_unchanged_intent", func(t *testing.T) {
+		if err := speaker.Process.Signal(syscall.SIGSTOP); err != nil {
+			t.Fatal(err)
+		}
+		var stopped syscall.WaitStatus
+		pid, err := syscall.Wait4(speaker.Process.Pid, &stopped, syscall.WUNTRACED, nil)
+		if err != nil || pid != speaker.Process.Pid || !stopped.Stopped() || stopped.StopSignal() != syscall.SIGSTOP {
+			t.Fatalf("speaker did not enter SIGSTOP: pid=%d status=%v error=%v", pid, stopped, err)
+		}
+		call, stop := context.WithTimeout(t.Context(), 500*time.Millisecond)
+		defer stop()
+		var progress bytes.Buffer
+		err = reconcile.Run(call, reconcile.Config{Interval: 10 * time.Millisecond, CycleTimeout: 100 * time.Millisecond}, func(ctx context.Context) error {
+			now := time.Now()
+			return routes.Reconcile(ctx, health.Snapshot{Primary: health.Check{State: health.Healthy, StartedAt: now}, Pooler: health.Check{State: health.Healthy, StartedAt: now}})
+		}, &progress)
+		if progress.Len() != 0 {
+			t.Fatalf("frozen speaker renewed unchanged owned intent: %q", progress.String())
+		}
+		if err == nil || call.Err() != nil {
+			t.Fatalf("speaker failure did not stop the first bounded cycle: %v (outer context: %v)", err, call.Err())
+		}
+	})
 }

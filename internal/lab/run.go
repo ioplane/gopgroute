@@ -193,6 +193,9 @@ func Run(ctx context.Context, args []string, stdout io.Writer) (result error) {
 			if sc.Role == "replica" {
 				node = replicas[0]
 			}
+			if sc.Role == "replica2" {
+				node = replicas[1]
+			}
 			if e = c.refreshRoute(ctx, node); e != nil {
 				return e
 			}
@@ -215,25 +218,15 @@ func Run(ctx context.Context, args []string, stdout io.Writer) (result error) {
 		if e = c.verify(ctx, r.Acknowledged); e != nil {
 			return e
 		}
-		id := 1
-		for _, n := range r.Acknowledged {
-			if n >= id {
-				id = n + 1
-			}
+		if _, e = c.receipt(ctx, &r); e != nil {
+			return e
 		}
-		// No retry after an ambiguous response: the server may already have committed.
-		_, e = c.execute(ctx, "client", "python3", "/lab/check.py", "receipt", strconv.Itoa(id))
-		if e != nil {
-			r.Unknown = append(r.Unknown, id)
-			return errors.Join(errors.New("UNKNOWN COMMIT outcome; campaign stopped without replay"), e)
-		}
-		r.Acknowledged = append(r.Acknowledged, id)
 		r.Results = append(r.Results, outcome{Scenario: sc, Verdict: "IN_PROGRESS", Before: &baseline})
 		r.Commands = append([]commandResult(nil), c.commands...)
 		if e = save(*output, r); e != nil {
 			return e
 		}
-		v := c.caseRun(ctx, sc, baseline)
+		v := c.caseRun(ctx, sc, baseline, func(ctx context.Context) (probe, error) { return c.receipt(ctx, &r) })
 		if c.uncertain {
 			v.Restored = false
 			v.Verdict = "ERROR"
@@ -275,6 +268,37 @@ func Run(ctx context.Context, args []string, stdout io.Writer) (result error) {
 		}
 	}
 	return nil
+}
+
+func (c *controller) receipt(ctx context.Context, r *report) (probe, error) {
+	id := 1
+	for _, n := range r.Acknowledged {
+		if n >= id {
+			id = n + 1
+		}
+	}
+	v, e := c.execute(ctx, "client", "python3", "/lab/check.py", "receipt", strconv.Itoa(id))
+	var p probe
+	if e == nil {
+		e = json.Unmarshal([]byte(v.Stdout), &p)
+	}
+	if e == nil {
+		got, err := p.number("id")
+		ack, err2 := p.boolean("acknowledged")
+		payload, err3 := p.text("payload")
+		if err != nil || err2 != nil || err3 != nil || got != id || !ack || payload != fmt.Sprintf("ack-%d", id) {
+			e = errors.New("invalid COMMIT acknowledgement")
+		}
+	}
+	if e != nil {
+		r.Unknown = append(r.Unknown, id)
+		c.mu.Lock()
+		c.uncertain = true
+		c.mu.Unlock()
+		return p, errors.Join(errors.New("UNKNOWN COMMIT outcome; campaign stopped without replay"), e)
+	}
+	r.Acknowledged = append(r.Acknowledged, id)
+	return p, nil
 }
 
 func (c *controller) ledger(ctx context.Context) ([]int, error) {

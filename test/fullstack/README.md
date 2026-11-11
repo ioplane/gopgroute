@@ -117,11 +117,11 @@ regressions; no dependency download may bypass the configured internal mirror.
 `gopgroute-lab --config <private-json>` prints the plan without executing remote
 commands. Add `--apply --output <new-absolute-directory>` to execute; `--only`
 accepts explicit comma-separated scenario IDs. An existing output directory is
-rejected. The finite model contains 48 cases:
+rejected. The finite model contains 57 cases:
 
 - Healthy baseline and three targeted Patroni switchovers.
-- Primary/replica guardian, adapter and speaker SIGKILL/SIGSTOP.
-- Primary/replica PgBouncer, PostgreSQL process-tree and Patroni suspension.
+- Primary/synchronous/asynchronous replica guardian, adapter and speaker SIGKILL/SIGSTOP.
+- The same three roles for PgBouncer, PostgreSQL process-tree and Patroni suspension.
 - Three whole database-container losses, three etcd singleton and three
   two-voter losses.
 - Three leaf losses and three individual BGP session-edge withdrawals.

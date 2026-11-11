@@ -10,12 +10,14 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import http.client
 import ipaddress
 import json
 import re
 import signal
+import socket
 import ssl
 import subprocess  # nosec B404 # Fixed local read-only commands, never a shell.
 import sys
@@ -514,28 +516,105 @@ def fib(value: object, prefix: str, kernel: object) -> dict:
         prefix, []
     )  # An empty successful RIB response means observed withdrawal.
     require(isinstance(routes, list), "invalid route entries")
-    installed, hops = [], []
+    installed, hops, active_hops = [], [], set()
     for row in routes:
         installed.append(field(row, "installed", bool))
-        hops.extend(
-            {"gateway": field(hop, "ip", str), "fib": field(hop, "fib", bool)}
-            for hop in field(row, "nexthops", list)
-        )
+        for hop in field(row, "nexthops", list):
+            projected = {
+                "gateway": field(hop, "ip", str),
+                "fib": field(hop, "fib", bool),
+            }
+            hops.append(projected)
+            if installed[-1] and projected["fib"]:
+                active_hops.add(str(ipaddress.IPv4Address(projected["gateway"])))
+    kernel_hops = set()
     for row in kernel:
         require(
             str(ipaddress.ip_network(field(row, "dst", str))) == prefix,
             "unexpected kernel route",
         )
+        require(
+            row.get("type", "unicast") == "unicast", "kernel VIP route is not unicast"
+        )
+        if "nexthops" in row:
+            entries = field(row, "nexthops", list)
+            require(bool(entries), "empty kernel nexthop list")
+        else:
+            entries = [row]
+        for hop in entries:
+            kernel_hops.add(str(ipaddress.IPv4Address(field(hop, "gateway", str))))
+            require(bool(field(hop, "dev", str)), "missing kernel nexthop device")
+    rib_installed, kernel_installed = any(installed), bool(kernel)
+    require(rib_installed == kernel_installed, "RIB/kernel VIP installation mismatch")
+    require(
+        not rib_installed or (bool(active_hops) and active_hops == kernel_hops),
+        "RIB/kernel VIP nexthop mismatch",
+    )
     return {
         "prefix": prefix,
-        "installed": any(installed),
+        "rib_installed": rib_installed,
+        "kernel_installed": kernel_installed,
+        "installed": rib_installed and kernel_installed,
         "nexthops": hops,
         "kernel_routes": kernel,
     }
 
 
+def origin_prefixes(value: object, peer: str) -> list[str]:
+    routes = field(value, "routes", dict)
+    require(set(routes).issubset(set(VIPS.values())), "foreign local-origin prefix")
+    require(
+        field(value, "totalRoutes", int) == len(routes), "origin route count mismatch"
+    )
+    index = next((i for i, address in IPS.items() if address == peer), None)
+    require(index is not None, "unknown local GoBGP peer")
+    for prefix, paths in routes.items():
+        require(isinstance(paths, list) and bool(paths), "invalid origin paths")
+        for path in paths:
+            require(
+                field(path, "peerId", str) == peer and field(path, "valid", bool),
+                "invalid origin peer or route",
+            )
+            require(
+                field(path, "network", str) == prefix
+                and field(path, "prefixLen", int) == 32,
+                "origin network mismatch",
+            )
+            require(
+                str(ipaddress.IPv4Address(field(path, "prefix", str)))
+                == prefix.removesuffix("/32"),
+                "origin prefix mismatch",
+            )
+            require(
+                field(path, "path", str) == str(64520 + cast(int, index)),
+                "origin AS path mismatch",
+            )
+            nexthops = field(path, "nexthops", list)
+            require(bool(nexthops), "missing origin next hop")
+            require(
+                all(field(hop, "ip", str) == peer for hop in nexthops),
+                "origin next hop differs from peer",
+            )
+    return sorted(routes)
+
+
 def leaf() -> dict:
     neighbors = command(["/usr/bin/vtysh", "-c", "show bgp neighbors json"])
+    peer_observations = peers(neighbors)
+    local = [
+        row["address"] for row in peer_observations if row["address"] in IPS.values()
+    ]
+    require(len(local) == 1, "ambiguous local GoBGP peer")
+    origins = origin_prefixes(
+        command(
+            [
+                "/usr/bin/vtysh",
+                "-c",
+                "show bgp ipv4 unicast neighbors " + local[0] + " routes json",
+            ]
+        ),
+        local[0],
+    )
     routes = {}
     for label, prefix in VIPS.items():
         routes[label] = fib(
@@ -543,7 +622,11 @@ def leaf() -> dict:
             prefix,
             command(["/usr/sbin/ip", "-j", "route", "show", "exact", prefix]),
         )
-    return {"peers": peers(neighbors), "vips": routes}
+    return {
+        "peers": peer_observations,
+        "vips": routes,
+        "local_origin_prefixes": origins,
+    }
 
 
 def client() -> dict:
@@ -651,6 +734,21 @@ def fencing() -> dict:
     import psycopg2
 
     try:
+        with socket.create_connection(("127.0.0.1", 5432), timeout=2):
+            pass  # A TCP listener alone cannot authorize a PostgreSQL role.
+    except OSError as error:
+        refused = (
+            isinstance(error, ConnectionRefusedError)
+            and error.errno == errno.ECONNREFUSED
+        )
+        return {
+            "state": "refused" if refused else "unknown",
+            "sql_accepts": False if refused else None,
+            "error": type(error).__name__,
+            "backend": "127.0.0.1:5432",
+            "refusal_errno": errno.ECONNREFUSED if refused else None,
+        }
+    try:
         with (
             closing(
                 psycopg2.connect(
@@ -669,9 +767,15 @@ def fencing() -> dict:
             cursor.execute("SELECT pg_is_in_recovery()")
             row = cursor.fetchone()
     except (psycopg2.Error, OSError) as error:
-        return {"sql_accepts": False, "error": type(error).__name__}
-    require(row is not None and isinstance(row[0], bool), "invalid SQL fencing result")
+        return {"state": "unknown", "sql_accepts": None, "error": type(error).__name__}
+    if (
+        not isinstance(row, (tuple, list))
+        or len(row) != 1
+        or not isinstance(row[0], bool)
+    ):
+        return {"state": "unknown", "sql_accepts": None, "error": "InvalidSQLResult"}
     return {
+        "state": "demoted" if row[0] else "primary",
         "sql_accepts": True,
         "recovery": row[0],
         "error": None,

@@ -134,6 +134,43 @@ func (c *controller) changedLeader(ctx context.Context, old int, r *outcome) err
 	})
 }
 
+func (c *controller) available(ctx context.Context, r *outcome) error {
+	return poll(ctx, 35*time.Second, func(ctx context.Context) (bool, error) {
+		p, e := c.readProbe(ctx, "client", "client")
+		r.During["client"] = p
+		if e != nil {
+			return false, e
+		}
+		return p.boolean("ok")
+	})
+}
+
+func fencingConfirmed(p probe) (bool, error) {
+	state, e := p.text("state")
+	if e != nil {
+		return false, e
+	}
+	switch state {
+	case "demoted", "refused":
+		return true, nil
+	case "primary", "unknown":
+		return false, fmt.Errorf("old primary fencing %s", state)
+	default:
+		return false, errors.New("unknown fencing observation state")
+	}
+}
+
+func (c *controller) fenced(ctx context.Context, node int, r *outcome) error {
+	return poll(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
+		p, e := c.readProbe(ctx, fmt.Sprintf("db%d", node), "fencing")
+		r.During["old_primary"] = p
+		if e != nil {
+			return false, e
+		}
+		return fencingConfirmed(p)
+	})
+}
+
 func (c *controller) window(ctx context.Context, d time.Duration, check func() error) error {
 	end := time.NewTimer(d)
 	defer end.Stop()
@@ -153,7 +190,7 @@ func (c *controller) window(ctx context.Context, d time.Duration, check func() e
 	}
 }
 
-func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot) (r outcome) {
+func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot, commit func(context.Context) (probe, error)) (r outcome) {
 	r = outcome{Scenario: sc, Verdict: "PASS", Before: &before, During: map[string]probe{}}
 	startCommands := len(c.commands)
 	defer func() { r.Commands = append([]commandResult(nil), c.commands[startCommands:]...) }()
@@ -201,6 +238,23 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot) 
 	started := time.Now()
 	defer func() { r.FaultSeconds = time.Since(started).Seconds() }()
 	db, route := fmt.Sprintf("db%d", node), fmt.Sprintf("route%d", node)
+	defer func() {
+		if r.Verdict != "PASS" && r.Verdict != "EXPECTED_LIMITATION" {
+			return
+		}
+		if sc.Kind == "paired" || sc.Kind == "dcs" && sc.Other != 0 || sc.Kind == "leaf" && node == 1 || sc.Kind == "pooler" && node == primary {
+			return
+		}
+		if e := c.available(ctx, &r); e != nil {
+			fail(e)
+			return
+		}
+		p, e := commit(ctx)
+		r.During["transaction"] = p
+		if e != nil {
+			fail(e)
+		}
+	}()
 	switch sc.Kind {
 	case "baseline":
 		return r
@@ -337,21 +391,41 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot) 
 				return r
 			}
 			r.During["old_primary"] = p
-			accepts, e := p.boolean("sql_accepts")
+			state, e := p.text("state")
 			if e != nil {
 				fail(e)
 				return r
 			}
-			if accepts {
-				recovery, e := p.boolean("recovery")
+			if state == "primary" {
+				r.Verdict = "EXPECTED_LIMITATION"
+				r.Error = "watchdog=off: old primary still accepts SQL; no claim of two acknowledged writers"
+			} else if state != "demoted" && state != "refused" {
+				fail(errors.New("old primary fencing UNKNOWN"))
+			}
+		}
+		if sc.Kind == "pooler" && node == primary {
+			e = poll(ctx, 20*time.Second, func(ctx context.Context) (bool, error) {
+				p, e := c.readProbe(ctx, "client", "client")
+				r.During["client"] = p
 				if e != nil {
-					fail(e)
-					return r
+					return false, e
 				}
-				if !recovery {
-					r.Verdict = "EXPECTED_LIMITATION"
-					r.Error = "watchdog=off: old primary still accepts SQL; no claim of two acknowledged writers"
+				w, e := p.boolean("checks", "write", "ok")
+				if e != nil {
+					return false, e
 				}
+				rd, e := p.boolean("checks", "read", "ok")
+				if e != nil {
+					return false, e
+				}
+				dns, e := p.boolean("checks", "dns", "ok")
+				return !w && rd && !dns, e
+			})
+			if e != nil {
+				fail(e)
+			} else {
+				r.Verdict = "EXPECTED_LIMITATION"
+				r.Error = "Suspended primary PgBouncer withdraws the only write origin; database leadership alone cannot restore the pooler"
 			}
 		}
 	case "pg-tree":
@@ -412,7 +486,7 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot) 
 			}
 		}
 		if len(nodes) == 1 {
-			e = c.window(ctx, 8*time.Second, func() error {
+			e = c.window(ctx, 25*time.Second, func() error {
 				p, e := c.readProbe(ctx, "client", "client")
 				r.During["client"] = p
 				if e != nil {
@@ -429,32 +503,22 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot) 
 			})
 		} else {
 			e = poll(ctx, 35*time.Second, func(ctx context.Context) (bool, error) {
-				p, e := c.readProbe(ctx, "leaf1", "leaf")
-				r.During["leaf1"] = p
-				if e != nil {
-					return false, e
-				}
-				yes, e := p.boolean("vips", "write", "installed")
-				return !yes, e
-			})
-			if e == nil {
-				p, err := c.readProbe(ctx, fmt.Sprintf("db%d", primary), "fencing")
-				r.During["old_primary"] = p
-				if err != nil {
-					e = err
-				} else {
-					accepted, err := p.boolean("sql_accepts")
-					if err != nil {
-						e = err
-					} else if accepted {
-						recovering, err := p.boolean("recovery")
-						if err != nil {
-							e = err
-						} else if !recovering {
-							e = errors.New("DCS quorum lost but old primary remains writable")
-						}
+				for n := 1; n <= 3; n++ {
+					name := fmt.Sprintf("leaf%d", n)
+					p, e := c.readProbe(ctx, name, "leaf")
+					r.During[name] = p
+					if e != nil {
+						return false, e
+					}
+					yes, e := p.boolean("vips", "write", "installed")
+					if e != nil || yes {
+						return false, e
 					}
 				}
+				return true, nil
+			})
+			if e == nil {
+				e = c.fenced(ctx, primary, &r)
 			}
 		}
 		if e != nil {
@@ -472,6 +536,10 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot) 
 				fail(e)
 				return r
 			}
+			if e = c.fenced(ctx, node, &r); e != nil {
+				fail(e)
+				return r
+			}
 		}
 		p, e := c.readProbe(ctx, "client", "client")
 		r.During["client"] = p
@@ -485,7 +553,10 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot) 
 			return r
 		}
 		if node == 1 {
-			if ok {
+			w, e1 := p.boolean("checks", "write", "ok")
+			rd, e2 := p.boolean("checks", "read", "ok")
+			dns, e3 := p.boolean("checks", "dns", "ok")
+			if ok || e1 != nil || e2 != nil || e3 != nil || w || rd || dns {
 				fail(errors.New("single-ingress leaf loss did not affect client"))
 				return r
 			}
@@ -603,6 +674,8 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot) 
 			}
 		}
 		if e = c.changedLeader(ctx, node, &r); e != nil {
+			fail(e)
+		} else if e = c.fenced(ctx, node, &r); e != nil {
 			fail(e)
 		}
 	case "lag":
