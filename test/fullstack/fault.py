@@ -27,7 +27,10 @@ MANIFEST_LIMIT = 128 * 1024
 SQL = {
     "pause": "SELECT pg_wal_replay_pause()",
     "resume": "SELECT pg_wal_replay_resume()",
-    "wal": "SELECT pg_switch_wal()::text",
+    "wal": (
+        "SELECT pg_logical_emit_message(false, 'gopgroute-lab', "
+        "repeat('x', 2097152), true)::text"
+    ),
 }
 
 

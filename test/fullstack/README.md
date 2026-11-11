@@ -154,6 +154,8 @@ COMMIT acknowledgements have a separate 45-second transport bound; ordinary
 observations retain the 15-second bound. Exceeding the bound remains UNKNOWN,
 without replay. Report the measured acknowledgement delay separately from
 continuous availability or a production RTO claim.
+Replay-lag cases emit two nontransactional 2 MiB WAL messages and verify the
+primary's reported replay lag exceeds 1 MiB before checking withdrawal.
 
 This covers the declared finite graph of faults, not arbitrary combinations,
 physical three-site isolation, hardware fencing or backup recovery. BGP edge

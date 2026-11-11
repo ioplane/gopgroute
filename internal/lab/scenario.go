@@ -690,6 +690,35 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot, 
 				return r
 			}
 		}
+		if e = poll(ctx, 20*time.Second, func(ctx context.Context) (bool, error) {
+			p, e := c.readProbe(ctx, fmt.Sprintf("db%d", primary), "node")
+			if e != nil {
+				return false, e
+			}
+			r.During["lag_proof"] = p
+			rows, e := p.list("postgres", "replication")
+			if e != nil {
+				return false, e
+			}
+			for _, v := range rows {
+				row, e := object(v)
+				if e != nil {
+					return false, e
+				}
+				name, e := row.text("application_name")
+				if e != nil {
+					return false, e
+				}
+				if name == fmt.Sprintf("db%d", node) {
+					lag, e := row.number("replay_lag_bytes")
+					return lag > 1048576, e
+				}
+			}
+			return false, errors.New("missing lagged replica")
+		}); e != nil {
+			fail(e)
+			return r
+		}
 		if e = c.observeOrigin(ctx, node, false, &r); e != nil {
 			fail(e)
 		}
