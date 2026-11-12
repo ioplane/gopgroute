@@ -60,11 +60,15 @@ uncertainty, not evidence of withdrawal. T3 must stop the dedicated speaker on
 manager crash, stall or uncertain state and account for peer graceful restart.
 Resetting a journal requires a separate proven-clean speaker incarnation;
 there is deliberately no automatic reset or unsafe recovery switch in T2.
+T3 [incarnation leases](adr/0006-inherited-incarnation-leases.md) retire the whole
+dedicated process pair and provision separate T2 directories after exclusive
+lease acquisition. They never feed an old journal to a new speaker.
 An active manager is valid only for one speaker incarnation. T3 must terminate
 it when the supervised speaker exits, restarts or is replaced, and perform
 startup reconciliation with a new manager. `Reconcile` returning nil means
 that the requested library operations completed; it is not RIB attestation.
-An unchanged owned intent does not issue another RPC. ListPath cannot prove
+An unchanged owned intent does not repeat route mutations. Each cycle requires
+a bounded read-only GetBgp response before reporting progress. ListPath cannot prove
 continued UUID identity even if the same prefix remains visible.
 
 ## Transport and verification
@@ -93,5 +97,6 @@ source and regression evidence for this finding, not a general security or
 deployed-speaker qualification. Keep the scanner enabled without suppression;
 refresh the database and exact-source evidence when changing the dependency.
 The adapter does not import the GoBGP server; native tests do. No BGP peer is
-configured in those tests. The x/net HTML advisories are resolved by pinning
+configured in those T2 ownership tests; daemon fixtures configure a loopback-only
+peer without qualifying a connected peer. The x/net HTML advisories are resolved by pinning
 v0.62.0, rather than by relying on their currently unreachable code paths.

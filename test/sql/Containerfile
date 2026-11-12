@@ -1,4 +1,4 @@
-FROM docker.io/library/golang:1.27.3-trixie@sha256:7b072c590a326b9d2a43b165ae247f6e8eafff32e1ad154ab97139e89f053be9 AS builder
+FROM docker.io/library/golang:1.27.4-trixie@sha256:b54b2639de8c1bfe538ec5ffc45f29b1932235ac5f6d63c059853646677112d9 AS builder
 COPY debian.sources /etc/apt/public.sources
 RUN apt-get -o Dir::Etc::sourcelist=/etc/apt/public.sources -o Dir::Etc::sourceparts=- -o APT::Update::Error-Mode=any update \
     && apt-get -o Dir::Etc::sourcelist=/etc/apt/public.sources -o Dir::Etc::sourceparts=- install -y --no-install-recommends libevent-dev libssl-dev pkg-config

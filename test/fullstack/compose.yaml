@@ -1,0 +1,114 @@
+name: ${LAB_PROJECT}
+x-common: &common
+  init: true
+  stop_signal: SIGTERM
+  stop_grace_period: 30s
+  image: ${LAB_IMAGE}
+  labels:
+    io.agents-skills.session: ${LAB_SESSION}
+    io.agents-skills.persist: gopgroute-fullstack-lab
+  cap_add: [NET_ADMIN, NET_RAW]
+  security_opt: [label=disable]
+  mem_limit: 1536m
+  cpus: 1.0
+  pids_limit: 256
+  volumes: ['${LAB_CODE}:/lab:ro']
+services:
+  leaf1:
+    <<: *common
+    cap_add: [NET_ADMIN, NET_RAW, SYS_ADMIN]
+    command: [leaf, '1']
+    tmpfs: ['/run/frr:rw,nosuid,nodev,noexec,mode=0755,size=8m']
+    sysctls: {net.ipv4.ip_forward: '1'}
+    networks:
+      dc1: {ipv4_address: 192.0.2.2}
+      wan: {ipv4_address: 198.18.0.11}
+      clients: {ipv4_address: 198.19.0.2}
+  leaf2:
+    <<: *common
+    cap_add: [NET_ADMIN, NET_RAW, SYS_ADMIN]
+    command: [leaf, '2']
+    tmpfs: ['/run/frr:rw,nosuid,nodev,noexec,mode=0755,size=8m']
+    sysctls: {net.ipv4.ip_forward: '1'}
+    networks:
+      dc2: {ipv4_address: 198.51.100.2}
+      wan: {ipv4_address: 198.18.0.12}
+  leaf3:
+    <<: *common
+    cap_add: [NET_ADMIN, NET_RAW, SYS_ADMIN]
+    command: [leaf, '3']
+    tmpfs: ['/run/frr:rw,nosuid,nodev,noexec,mode=0755,size=8m']
+    sysctls: {net.ipv4.ip_forward: '1'}
+    networks:
+      dc3: {ipv4_address: 203.0.113.2}
+      wan: {ipv4_address: 198.18.0.13}
+  db1:
+    <<: *common
+    command: [db, '1']
+    tmpfs: ['/run/postgresql:rw,nosuid,nodev,noexec,mode=0700,size=8m']
+    volumes: ['${LAB_DATA}/db1:/state', '${LAB_CREDENTIALS}:/run/lab:ro', '${LAB_CODE}:/lab:ro']
+    networks: {dc1: {ipv4_address: 192.0.2.10}}
+  db2:
+    <<: *common
+    command: [db, '2']
+    tmpfs: ['/run/postgresql:rw,nosuid,nodev,noexec,mode=0700,size=8m']
+    volumes: ['${LAB_DATA}/db2:/state', '${LAB_CREDENTIALS}:/run/lab:ro', '${LAB_CODE}:/lab:ro']
+    networks: {dc2: {ipv4_address: 198.51.100.10}}
+  db3:
+    <<: *common
+    command: [db, '3']
+    tmpfs: ['/run/postgresql:rw,nosuid,nodev,noexec,mode=0700,size=8m']
+    volumes: ['${LAB_DATA}/db3:/state', '${LAB_CREDENTIALS}:/run/lab:ro', '${LAB_CODE}:/lab:ro']
+    networks: {dc3: {ipv4_address: 203.0.113.10}}
+  client:
+    <<: *common
+    command: [client]
+    volumes: ['${LAB_DATA}/evidence:/evidence', '${LAB_CREDENTIALS}:/run/lab:ro', '${LAB_CODE}:/lab:ro']
+    networks: {clients: {ipv4_address: 198.19.0.10}}
+  route1:
+    <<: *common
+    restart: on-failure:3
+    command: [route]
+    network_mode: service:db1
+    depends_on: [db1]
+    tmpfs: ['/run/gopgroute:rw,nosuid,nodev,noexec,mode=0700,size=1m']
+    volumes: ['${LAB_DATA}/db1:/state', '${LAB_CODE}:/lab:ro']
+  route2:
+    <<: *common
+    restart: on-failure:3
+    command: [route]
+    network_mode: service:db2
+    depends_on: [db2]
+    tmpfs: ['/run/gopgroute:rw,nosuid,nodev,noexec,mode=0700,size=1m']
+    volumes: ['${LAB_DATA}/db2:/state', '${LAB_CODE}:/lab:ro']
+  route3:
+    <<: *common
+    restart: on-failure:3
+    command: [route]
+    network_mode: service:db3
+    depends_on: [db3]
+    tmpfs: ['/run/gopgroute:rw,nosuid,nodev,noexec,mode=0700,size=1m']
+    volumes: ['${LAB_DATA}/db3:/state', '${LAB_CODE}:/lab:ro']
+networks:
+  dc1:
+    internal: true
+    labels: &labels
+      io.agents-skills.session: ${LAB_SESSION}
+      io.agents-skills.persist: gopgroute-fullstack-lab
+    ipam: {config: [{subnet: 192.0.2.0/26}]}
+  dc2:
+    internal: true
+    labels: *labels
+    ipam: {config: [{subnet: 198.51.100.0/26}]}
+  dc3:
+    internal: true
+    labels: *labels
+    ipam: {config: [{subnet: 203.0.113.0/26}]}
+  wan:
+    internal: true
+    labels: *labels
+    ipam: {config: [{subnet: 198.18.0.0/24}]}
+  clients:
+    internal: true
+    labels: *labels
+    ipam: {config: [{subnet: 198.19.0.0/24}]}

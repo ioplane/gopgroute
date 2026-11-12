@@ -26,7 +26,7 @@ func run(t *testing.T, stdin string, env []string, name string, args ...string) 
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) // #nosec G204 -- Fixed PostgreSQL fixture commands with synthetic test arguments, without a shell.
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Env = append(os.Environ(), env...)
 	output, err := cmd.CombinedOutput()
@@ -37,7 +37,7 @@ func run(t *testing.T, stdin string, env []string, name string, args ...string) 
 
 func launch(t *testing.T, name string, args ...string) func() {
 	t.Helper()
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command(name, args...) // #nosec G204 -- Fixed PostgreSQL/PgBouncer fixture commands, without a shell.
 	log, err := os.CreateTemp(t.TempDir(), "process.log")
 	if err != nil {
 		t.Fatal(err)
@@ -56,12 +56,21 @@ func launch(t *testing.T, name string, args ...string) func() {
 				t.Error(err)
 			}
 			select {
-			case <-done:
+			case err := <-done:
+				var exit *exec.ExitError
+				if err != nil && !errors.As(err, &exit) {
+					t.Error(err)
+				} // fail-silent-ok: requested SIGINT/KILL produces an expected ExitError.
 			case <-time.After(3 * time.Second):
 				if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 					t.Error(err)
 				}
-				<-done
+				if err := <-done; err != nil {
+					var exit *exec.ExitError
+					if !errors.As(err, &exit) {
+						t.Error(err)
+					}
+				} // fail-silent-ok: requested SIGKILL produces an expected ExitError.
 			}
 			if err := log.Close(); err != nil {
 				t.Error(err)
@@ -93,7 +102,7 @@ func readyPostgres(t *testing.T, port string) {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
-		err := exec.CommandContext(ctx, "pg_isready", "-q", "-h", "127.0.0.1", "-p", port, "-U", "bootstrap").Run()
+		err := exec.CommandContext(ctx, "pg_isready", "-q", "-h", "127.0.0.1", "-p", port, "-U", "bootstrap").Run() // #nosec G204 -- Fixed binary and test-local numeric port.
 		cancel()
 		if err == nil {
 			return
@@ -113,7 +122,7 @@ func TestNativeSQLThroughPgBouncer(t *testing.T) {
 		}
 	}
 	for _, component := range []struct{ name, prefix string }{{"postgres", "postgres (PostgreSQL) 18.6\n"}, {"pgbouncer", "PgBouncer 1.26.1\n"}} {
-		output, err := exec.CommandContext(t.Context(), component.name, "--version").Output()
+		output, err := exec.CommandContext(t.Context(), component.name, "--version").Output() // #nosec G204 -- Fixed fixture component list, version metadata only.
 		actual := strings.Join(strings.Fields(string(output)), " ") + " "
 		want := strings.Join(strings.Fields(component.prefix), " ") + " "
 		if err != nil || !strings.HasPrefix(actual, want) {
@@ -122,7 +131,7 @@ func TestNativeSQLThroughPgBouncer(t *testing.T) {
 		t.Log(strings.TrimSpace(component.prefix))
 	}
 	root := t.TempDir()
-	if err := os.Chmod(root, 0o700); err != nil {
+	if err := os.Chmod(root, 0o700); err != nil { // #nosec G302 -- Private PostgreSQL directory requires owner traversal.
 		t.Fatal(err)
 	}
 	password := "synthetic-test-password"

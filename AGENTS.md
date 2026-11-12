@@ -6,9 +6,10 @@ Read README.md and docs/en/01-architecture.md before changes.
 - Documentation: English under docs/en; Russian under docs/ru.
 - Keep infrastructure addresses, inventory, credentials and private evidence
   outside this public repository. Examples use documentation address ranges.
-- T1 and T2 implement internal health and journaled route-ownership libraries.
-  Do not claim a runnable daemon, operational acceptance or released artifacts.
-  T3 must supervise a dedicated speaker independently before runtime admission.
+- T1/T2 are internal health and journaled route-ownership libraries; T3 adds
+  internal supervision and a daemon candidate. Do not claim operational
+  acceptance or released runtime artifacts. Require independent speaker
+  supervision, exact artifact and peer admission before runtime deployment.
 - Read docs/en/03-route-ownership.md and ADR 0002 before ownership changes.
   Never retry an uncertain mutation or delete without a validated owned UUID.
 - Go code belongs in cmd and internal; tool dependencies belong in tools.

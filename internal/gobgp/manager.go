@@ -149,6 +149,16 @@ func (m *Manager) Reconcile(ctx context.Context, s health.Snapshot) error {
 			}
 		}
 	}
+	// Unchanged intent still needs speaker progress before the adapter emits a heartbeat.
+	call, cancel := context.WithTimeout(ctx, m.cfg.RPCTimeout)
+	defer cancel()
+	state, err := m.client.GetBgp(call, &api.GetBgpRequest{})
+	if err != nil {
+		return m.fail(fmt.Errorf("speaker progress: %w", err))
+	}
+	if state.GetGlobal() == nil || state.GetGlobal().GetAsn() == 0 {
+		return m.fail(errors.New("invalid speaker progress response"))
+	}
 	return nil
 }
 
