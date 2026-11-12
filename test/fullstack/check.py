@@ -3,6 +3,8 @@
 # dependencies = ["psycopg2-binary==2.9.10"]
 # ///
 """Client observations through FRR; nonzero exit on any failed assertion."""
+# ruff: noqa: TRY003
+# Fixed fixture diagnostics do not need separate exception classes.
 
 from __future__ import annotations
 
@@ -12,14 +14,18 @@ import sys
 import time
 from contextlib import closing
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import psycopg2
+if TYPE_CHECKING:
+    from psycopg2.extensions import connection
 
 WRITE = "198.19.255.10"
 READ = "198.19.255.11"
 
 
-def connect(host: str):
+def connect(host: str) -> connection:
+    import psycopg2  # noqa: PLC0415 # SQL-only dependency stays lazy for boundary tests.
+
     return psycopg2.connect(
         host=host,
         port=6432,
@@ -42,7 +48,8 @@ def observe() -> dict:
         ):
             cursor.execute("SET LOCAL statement_timeout = '1500ms'")
             cursor.execute(
-                "SELECT pg_is_in_recovery(), inet_server_addr()::text, pg_postmaster_start_time()::text"
+                "SELECT pg_is_in_recovery(), inet_server_addr()::text, "
+                "pg_postmaster_start_time()::text"
             )
             recovery, address, started = cursor.fetchone()
             if recovery != (label == "read"):
@@ -79,10 +86,16 @@ def receipt(identifier: int) -> dict:
         connection.cursor() as cursor,
     ):
         cursor.execute("SET LOCAL statement_timeout = '1500ms'")
+        cursor.execute("SET LOCAL synchronous_commit = 'on'")
         cursor.execute(
             "INSERT INTO lab_receipts(id,payload) VALUES (%s,%s)", (identifier, payload)
         )
-    return {"id": identifier, "payload": payload, "acknowledged": True}
+    return {
+        "id": identifier,
+        "payload": payload,
+        "acknowledged": True,
+        "synchronous_commit": "on",
+    }
 
 
 def verify(expected: list[int]) -> dict:

@@ -63,3 +63,10 @@ the former defaults. Require effective values on every node, primary-site
 loss and DCS-partition transactions, exact ledger preservation and recovery.
 A network-connection timeout is not a general process-stop deadline or
 independent watchdog; production predecessor exclusion remains a separate gate.
+
+Replay-lag qualification must hold replay while preserving the WAL receive and
+durable-flush path. Bind the stopped startup incarnation to SQL and its
+postmaster; take the replay baseline after confirmed STOP. Prove the same
+replication connection and synchronous membership before and after a client
+ACK, then restore and verify the exact ledger. SQL replay pause alone does
+not qualify a sustained fault when the HA controller automatically resumes it.

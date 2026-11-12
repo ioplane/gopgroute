@@ -125,7 +125,7 @@ rejected. The finite model contains 57 cases:
 - Three whole database-container losses, three etcd singleton and three
   two-voter losses.
 - Three leaf losses and three individual BGP session-edge withdrawals.
-- Primary DCS-client isolation, two replica replay pauses and a coupled
+- Primary DCS-client isolation, two replica replay-worker stalls and a coupled
   guardian/adapter suspension.
 - Seven native GoBGP/lease/incarnation regression boundaries.
 
@@ -154,8 +154,18 @@ COMMIT acknowledgements have a separate 45-second transport bound; ordinary
 observations retain the 15-second bound. Exceeding the bound remains UNKNOWN,
 without replay. Report the measured acknowledgement delay separately from
 continuous availability or a production RTO claim.
-Replay-lag cases emit two nontransactional 2 MiB WAL messages and verify the
-primary's reported replay lag exceeds 1 MiB before checking withdrawal.
+Replay-lag cases stop only the replica startup process, identified by SQL
+backend type, postmaster parent, process birth and PID namespace. Patroni can
+automatically undo a SQL replay pause, so it is not a sustained fault here.
+Register exact CONT before STOP and require the durable injector to finish
+before rollback. Sample replay after STOP is confirmed, emit two
+nontransactional 2 MiB WAL messages, then require the same streaming walsender
+and synchronous membership, advancing write/flush positions and unchanged
+replay with more than 1 MiB of durable lag. Require local-origin withdrawal,
+SQL/DNS and one COMMIT before CONT; receipts explicitly set transaction-local
+`synchronous_commit=on`. Recheck the same membership, caught-up flush and
+stopped replay after ACK. A raw startup STOP can retain shared locks; failure
+to prove receiving/flush progress fails the scenario and triggers rollback.
 Leaf2/leaf3 cases first switch the primary to the affected site so that the
 old-primary exclusion path is exercised on every run. The sole-ingress leaf1
 case retains its separate topology limitation.

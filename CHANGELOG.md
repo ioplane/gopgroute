@@ -7,6 +7,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Replay-lag injection holds only the verified startup process and proves
+  durable WAL progress with unchanged replay and synchronous membership.
+  Client receipts explicitly use synchronous commit; rollback waits for the
+  exact injector to finish before resuming the original process incarnation.
+
 - The isolated fixture uses explicit 10-second replication timeouts and checks
   their effective values before faults. The bounded configuration operation
   verifies DCS readback and supports restoring the former 60-second timers.

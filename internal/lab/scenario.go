@@ -266,7 +266,7 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot, 
 		if r.Verdict != "PASS" && r.Verdict != "EXPECTED_LIMITATION" {
 			return
 		}
-		if sc.Kind == "paired" || sc.Kind == "dcs" && sc.Other != 0 || sc.Kind == "leaf" && node == 1 || sc.Kind == "pooler" && node == primary {
+		if sc.Kind == "lag" || sc.Kind == "paired" || sc.Kind == "dcs" && sc.Other != 0 || sc.Kind == "leaf" && node == 1 || sc.Kind == "pooler" && node == primary {
 			return
 		}
 		if e := c.available(ctx, &r); e != nil {
@@ -703,8 +703,68 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot, 
 			fail(e)
 		}
 	case "lag":
-		undos = append(undos, func(ctx context.Context) error { _, e := c.fault(ctx, node, "replay", "resume"); return e })
-		if _, e = c.fault(ctx, node, "replay", "pause"); e != nil {
+		pid, birth, e := nodeIdentity(before, node, "startup")
+		if e != nil {
+			fail(e)
+			return r
+		}
+		var token [16]byte
+		if _, e = rand.Read(token[:]); e != nil {
+			fail(e)
+			return r
+		}
+		nonce := fmt.Sprintf("%x", token[:])
+		waitInjector := func(ctx context.Context) error {
+			return poll(ctx, 15*time.Second, func(ctx context.Context) (bool, error) {
+				v, e := c.fault(ctx, node, "signal-status", nonce)
+				if e != nil {
+					return false, e
+				}
+				var p probe
+				if e = json.Unmarshal([]byte(v.Stdout), &p); e != nil {
+					return false, e
+				}
+				r.During["injector"] = p
+				return quiescentSignal(p, pid, birth, "STOP")
+			})
+		}
+		undos = append(undos, func(ctx context.Context) error {
+			if e := waitInjector(ctx); e != nil {
+				return e
+			}
+			return c.signal(ctx, db, pid, birth, "CONT")
+		})
+		if _, e = c.fault(ctx, node, "signal-token", nonce, strconv.Itoa(pid), birth, "STOP"); e != nil {
+			fail(e)
+			return r
+		}
+		if e = waitInjector(ctx); e != nil {
+			fail(e)
+			return r
+		}
+		checkStopped := func(ctx context.Context) error {
+			p, e := c.readProbe(ctx, db, "startup")
+			r.During["startup"] = p
+			if e != nil {
+				return e
+			}
+			ok, e := startupStopped(p, before.Nodes[strconv.Itoa(node)])
+			if e != nil || !ok {
+				return errors.Join(e, errors.New("startup STOP not confirmed"))
+			}
+			return nil
+		}
+		if e = checkStopped(ctx); e != nil {
+			fail(e)
+			return r
+		}
+		frozen, e := c.readProbe(ctx, fmt.Sprintf("db%d", primary), "node")
+		r.During["lag_frozen_primary"] = frozen
+		if e != nil {
+			fail(e)
+			return r
+		}
+		if _, _, e = sameReplication(before.Nodes[strconv.Itoa(primary)], frozen, node); e != nil {
 			fail(e)
 			return r
 		}
@@ -720,30 +780,34 @@ func (c *controller) caseRun(ctx context.Context, sc scenario, before snapshot, 
 				return false, e
 			}
 			r.During["lag_proof"] = p
-			rows, e := p.list("postgres", "replication")
-			if e != nil {
-				return false, e
-			}
-			for _, v := range rows {
-				row, e := object(v)
-				if e != nil {
-					return false, e
-				}
-				name, e := row.text("application_name")
-				if e != nil {
-					return false, e
-				}
-				if name == fmt.Sprintf("db%d", node) {
-					lag, e := row.number("replay_lag_bytes")
-					return lag > 1048576, e
-				}
-			}
-			return false, errors.New("missing lagged replica")
+			return lagConfirmed(frozen, p, node)
 		}); e != nil {
 			fail(e)
 			return r
 		}
 		if e = c.observeOrigin(ctx, node, false, &r); e != nil {
+			fail(e)
+			return r
+		}
+		if e = c.available(ctx, &r); e != nil {
+			fail(e)
+			return r
+		}
+		p, e := commit(ctx)
+		r.During["transaction"] = p
+		if e != nil {
+			fail(e)
+			return r
+		}
+		e = poll(ctx, 20*time.Second, func(ctx context.Context) (bool, error) {
+			p, e := c.readProbe(ctx, fmt.Sprintf("db%d", primary), "node")
+			r.During["lag_after_ack"] = p
+			if e != nil {
+				return false, e
+			}
+			return lagConfirmed(frozen, p, node)
+		})
+		if e = errors.Join(e, checkStopped(ctx)); e != nil {
 			fail(e)
 		}
 	default:

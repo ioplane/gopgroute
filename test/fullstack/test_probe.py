@@ -21,6 +21,45 @@ import probe
 
 
 class ProbeTests(unittest.TestCase):
+    def test_startup_identity_requires_one_child_of_the_current_postmaster(
+        self,
+    ) -> None:
+        def stat(pid: int, parent: int, birth: str) -> bytes:
+            return (
+                f"{pid} (postgres) S {parent} ".encode()
+                + (" ".join(["0"] * 17 + [birth])).encode()
+            )
+
+        files = {
+            "/state/pg/postmaster.pid": b"10\n",
+            "/proc/10/stat": stat(10, 1, "100"),
+            "/proc/10/task/10/children": b"42",
+            "/proc/42/cmdline": b"postgres: gopgroute-lab: startup recovering WAL\x00",
+            "/proc/42/stat": stat(42, 10, "200"),
+        }
+        with patch.object(probe, "read", side_effect=lambda p: files[str(p)]):
+            value = probe.startup()
+            self.assertEqual(value["pid"], 42)
+            self.assertEqual(value["start_time"], "200")
+            self.assertEqual(value["postmaster_start_time"], "100")
+            files["/proc/42/stat"] = stat(42, 11, "200")
+            with self.assertRaises(probe.ProbeError):
+                probe.startup()
+            files["/proc/10/task/10/children"] = b""
+            with self.assertRaises(probe.ProbeError):
+                probe.startup()
+            files["/proc/10/task/10/children"] = b"42 43"
+            files["/proc/43/cmdline"] = files["/proc/42/cmdline"]
+            with self.assertRaises(probe.ProbeError):
+                probe.startup()
+            files["/proc/10/task/10/children"] = b"42"
+            files["/proc/42/stat"] = stat(42, 10, "200")
+            with (
+                patch.object(probe, "process_start", side_effect=["100", "201"]),
+                self.assertRaises(probe.ProbeError),
+            ):
+                probe.startup()
+
     def test_fencing_envelope_keeps_outer_mode_and_worker_sample_time(self) -> None:
         with patch.object(
             probe,

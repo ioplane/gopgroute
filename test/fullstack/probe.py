@@ -91,6 +91,41 @@ def process_start(process: Path) -> str:
     return start_time(read(process / "stat"), int(process.name))
 
 
+def startup() -> dict:
+    root = int(read(Path("/state/pg/postmaster.pid")).splitlines()[0])
+    require(root > 1, "invalid postmaster PID")
+    root_start = process_start(Path(f"/proc/{root}"))
+    children = read(Path(f"/proc/{root}/task/{root}/children")).split()
+    require(len(children) <= 1000, "too many postmaster children")
+    candidates = []
+    for child in children:
+        pid = int(child)
+        require(pid > 1, "invalid postmaster child PID")
+        if read(Path(f"/proc/{pid}/cmdline")).startswith(
+            b"postgres: gopgroute-lab: startup "
+        ):
+            candidates.append(pid)
+    require(len(candidates) == 1, "expected one PostgreSQL startup child")
+    pid = candidates[0]
+    data = read(Path(f"/proc/{pid}/stat"))
+    birth = start_time(data, pid)
+    fields = data.decode().rsplit(") ", 1)[1].split()
+    require(fields[1] == str(root), "startup parent differs from postmaster")
+    require(
+        process_start(Path(f"/proc/{pid}")) == birth
+        and process_start(Path(f"/proc/{root}")) == root_start,
+        "PostgreSQL process incarnation changed",
+    )
+    return {
+        "pid": pid,
+        "start_time": birth,
+        "postmaster_pid": root,
+        "postmaster_start_time": root_start,
+        "pid_namespace": str(Path("/proc/self/ns/pid").stat().st_ino),
+        "state": fields[0],
+    }
+
+
 def request(
     host: str,
     port: int,
@@ -237,8 +272,14 @@ def postgres() -> dict:
             'wal_receiver_timeout_ms',(SELECT setting::int FROM pg_settings
               WHERE name='wal_receiver_timeout'),
             'synchronous_standby_names',current_setting('synchronous_standby_names'),
+            'startup_pids',(SELECT coalesce(json_agg(pid),'[]')
+              FROM pg_stat_activity WHERE backend_type='startup'),
             'replication',(SELECT coalesce(json_agg(x),'[]') FROM (
               SELECT r.pid,r.application_name,r.state,r.sync_state,
+              r.write_lsn::text,r.flush_lsn::text,r.replay_lsn::text,
+              pg_wal_lsn_diff(CASE WHEN pg_is_in_recovery()
+                THEN pg_last_wal_replay_lsn() ELSE pg_current_wal_lsn() END,
+                r.flush_lsn)::bigint AS flush_lag_bytes,
               pg_wal_lsn_diff(CASE WHEN pg_is_in_recovery()
                 THEN pg_last_wal_replay_lsn() ELSE pg_current_wal_lsn() END,
                 r.replay_lsn)::bigint AS replay_lag_bytes,
@@ -263,6 +304,7 @@ def postgres() -> dict:
         ("wal_sender_timeout_ms", int),
         ("wal_receiver_timeout_ms", int),
         ("synchronous_standby_names", str),
+        ("startup_pids", list),
         ("replication", list),
         ("wal_receiver", list),
         ("slots", list),
@@ -310,13 +352,30 @@ def node() -> dict:
         "missing node process",
     )
     pg = postgres()
+    worker = None
+    if pg["recovery"]:
+        worker = startup()
+        require(
+            worker["postmaster_pid"] == pids["postgres"]
+            and pg["startup_pids"] == [worker["pid"]],
+            "SQL startup PID differs from process identity",
+        )
+        pids["startup"] = worker["pid"]
+    else:
+        require(pg["startup_pids"] == [], "primary has a startup process")
     pg["postgres_pid"] = pids["postgres"]
+    starts = {role: process_start(Path(f"/proc/{pid}")) for role, pid in pids.items()}
+    if worker is not None:
+        require(
+            starts["startup"] == worker["start_time"]
+            and starts["postgres"] == worker["postmaster_start_time"],
+            "startup observation changed before publication",
+        )
     return {
         "node_index": index,
+        "pid_namespace": str(Path("/proc/self/ns/pid").stat().st_ino),
         "process_ids": pids,
-        "process_start_ids": {
-            role: process_start(Path(f"/proc/{pid}")) for role, pid in pids.items()
-        },
+        "process_start_ids": starts,
         "postgres": pg,
         "patroni": patroni(bodies["patroni"], bodies["cluster"], codes),
         "etcd": {"health": True, "members": etcd_members(members)},
@@ -877,6 +936,7 @@ def main() -> None:
         "ledger": ledger,
         "fencing": fencing,
         "fencing-sql": fencing_sql,
+        "startup": startup,
     }
     parser.add_argument("mode", choices=modes)
     args = parser.parse_args()
