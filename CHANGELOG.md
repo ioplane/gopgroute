@@ -7,6 +7,11 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Primary-site leaf failures are explicitly prepared as primary losses.
+  Transient unknown SQL results may be re-observed inside the original window
+  only after worker completion and with a full worker transport budget;
+  unresolved workers still block the campaign.
+
 - SQL fencing observations run in a bounded owned worker. A frozen or failed
   worker reports an unknown database outcome; unconfirmed worker completion
   blocks replacement probes and retains campaign uncertainty.

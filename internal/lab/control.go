@@ -248,8 +248,10 @@ func mutation(args []string) bool {
 	return false
 }
 
+const podmanCommandTimeout = 15 * time.Second
+
 func (c *controller) podman(ctx context.Context, args ...string) (commandResult, error) {
-	return c.command(ctx, 15*time.Second, append([]string{"podman"}, args...)...)
+	return c.command(ctx, podmanCommandTimeout, append([]string{"podman"}, args...)...)
 }
 
 func (c *controller) execute(ctx context.Context, service string, args ...string) (commandResult, error) {

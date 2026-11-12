@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,22 @@ func TestFiniteCatalogHasUniqueCompleteCases(t *testing.T) {
 	}
 }
 
+func TestPreparationRejectsRoleDriftAndUnresolvedMutation(t *testing.T) {
+	sc := scenario{Kind: "leaf", Node: 2}
+	if e := preparationReady(sc, 3, false); e == nil {
+		t.Fatal("replica cut admitted as primary cut")
+	}
+	if e := preparationReady(sc, 2, true); e == nil {
+		t.Fatal("uncertain preparation admitted fault")
+	}
+	if e := preparationReady(sc, 2, false); e != nil {
+		t.Fatal(e)
+	}
+	if e := preparationReady(scenario{Kind: "baseline"}, 2, true); e == nil {
+		t.Fatal("non-leaf fault bypassed uncertainty")
+	}
+}
+
 func TestFencingTransportFailureRetainsCampaignUncertainty(t *testing.T) {
 	c := controller{cfg: config{Transport: []string{"/missing/lab-transport"}}}
 	if _, e := c.fencingObservation(t.Context(), 1); e == nil || !c.uncertain {
@@ -35,6 +52,67 @@ func TestFencingTransportFailureRetainsCampaignUncertainty(t *testing.T) {
 	}
 	if len(c.commands) != 1 {
 		t.Fatal("unconfirmed read was retried")
+	}
+}
+
+func TestFencingDoesNotLaunchWorkerWithoutItsFullBudget(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		t.Run(strconv.FormatBool(canceled), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), podmanCommandTimeout-time.Second)
+			defer cancel()
+			if canceled {
+				cancel()
+			}
+			c := controller{cfg: config{Transport: []string{"/missing/lab-transport"}}}
+			if p, e := c.fencingObservation(ctx, 2); e == nil || p != nil || c.uncertain || len(c.commands) != 0 {
+				t.Fatalf("unadmitted work: %v uncertain=%t calls=%d", e, c.uncertain, len(c.commands))
+			}
+		})
+	}
+}
+
+func TestFencingReobservesUnknownOnlyAfterWorkerCompletion(t *testing.T) {
+	for _, stopped := range []bool{true, false} {
+		t.Run(strconv.FormatBool(stopped), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "observations")
+			if e := os.WriteFile(path, []byte("0"), 0o600); e != nil {
+				t.Fatal(e)
+			}
+			t.Setenv("LAB_FENCING_OBSERVATIONS", path)
+			t.Setenv("LAB_FENCING_STOPPED", strconv.FormatBool(stopped))
+			code := `import json,os,pathlib
+p=pathlib.Path(os.environ["LAB_FENCING_OBSERVATIONS"])
+i=int(p.read_text())
+p.write_text(str(i+1))
+print(json.dumps({"schema_version":1,"mode":"fencing","execution_stopped":os.environ["LAB_FENCING_STOPPED"]=="true","state":"unknown" if i==0 else "refused"}))`
+			c := controller{cfg: config{Transport: []string{"/usr/bin/python3", "-c", code}}}
+			r := outcome{During: map[string]probe{}}
+			e := c.fenced(t.Context(), 2, &r)
+			if stopped {
+				if e != nil || c.uncertain || len(c.commands) != 2 {
+					t.Fatalf("completed observations: %v uncertain=%t calls=%d", e, c.uncertain, len(c.commands))
+				}
+			} else if e == nil || !c.uncertain || len(c.commands) != 1 {
+				t.Fatalf("unresolved worker: %v uncertain=%t calls=%d", e, c.uncertain, len(c.commands))
+			}
+		})
+	}
+}
+
+func TestFencingKeepsCompletedUnknownWhenReplacementBudgetIsExhausted(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), podmanCommandTimeout+100*time.Millisecond)
+	defer cancel()
+	code := `import json,time
+time.sleep(0.3)
+print(json.dumps({"schema_version":1,"mode":"fencing","execution_stopped":True,"state":"unknown"}))`
+	c := controller{cfg: config{Transport: []string{"/usr/bin/python3", "-c", code}}}
+	r := outcome{During: map[string]probe{}}
+	e := c.fenced(ctx, 2, &r)
+	if e == nil || !strings.Contains(e.Error(), "insufficient budget") || c.uncertain || len(c.commands) != 1 {
+		t.Fatalf("replacement admission: %v uncertain=%t calls=%d", e, c.uncertain, len(c.commands))
+	}
+	if state, e := r.During["old_primary"].text("state"); e != nil || state != "unknown" {
+		t.Fatalf("last observation lost: %q %v", state, e)
 	}
 }
 

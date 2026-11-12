@@ -211,8 +211,24 @@ func Run(ctx context.Context, args []string, stdout io.Writer) (result error) {
 				}
 			}
 		}
+		if sc.Kind == "leaf" && sc.Node > 1 {
+			// Exercise loss of the site's primary, rather than whichever replica happens to be there.
+			if e = c.switchTo(ctx, sc.Node); e != nil {
+				return e
+			}
+		}
 		baseline, e = c.restored(ctx)
 		if e != nil {
+			return e
+		}
+		primary, _, e := baseline.roles()
+		if e != nil {
+			return e
+		}
+		c.mu.Lock()
+		uncertain := c.uncertain
+		c.mu.Unlock()
+		if e = preparationReady(sc, primary, uncertain); e != nil {
 			return e
 		}
 		if e = c.verify(ctx, r.Acknowledged); e != nil {

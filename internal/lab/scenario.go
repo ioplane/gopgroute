@@ -161,6 +161,12 @@ func fencingConfirmed(p probe) (bool, error) {
 }
 
 func (c *controller) fencingObservation(ctx context.Context, node int) (probe, error) {
+	if e := ctx.Err(); e != nil {
+		return nil, e
+	}
+	if end, ok := ctx.Deadline(); ok && time.Until(end) < podmanCommandTimeout {
+		return nil, errors.New("insufficient budget for a complete fencing observation; no worker launched")
+	}
 	p, e := c.readProbe(ctx, fmt.Sprintf("db%d", node), "fencing")
 	stopped, stopErr := p.boolean("execution_stopped")
 	if e != nil || stopErr != nil || !stopped {
@@ -176,16 +182,14 @@ func (c *controller) fenced(ctx context.Context, node int, r *outcome) error {
 	var terminal error
 	e := poll(ctx, 30*time.Second, func(ctx context.Context) (bool, error) {
 		p, e := c.fencingObservation(ctx, node)
-		r.During["old_primary"] = p
+		if p != nil {
+			r.During["old_primary"] = p
+		}
 		if e != nil {
 			terminal = e
 			return true, nil
 		}
-		state, e := p.text("state")
-		if e != nil || state == "unknown" {
-			terminal = errors.Join(e, errors.New("fencing observation UNKNOWN"))
-			return true, nil
-		}
+		// A fresh read may replace a completed observation, never an unresolved worker or effect.
 		return fencingConfirmed(p)
 	})
 	return errors.Join(e, terminal)

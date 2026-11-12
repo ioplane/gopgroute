@@ -43,7 +43,10 @@ condition. Run potentially blocking SQL probes in an owned bounded worker;
 timeout, cancellation and a kill request do not prove that worker stopped.
 Retain its process incarnation when completion is unknown and refuse a
 replacement probe or another fault until reconciliation. A completed worker
-can still report an unknown database condition. SQL demotion, fresh connection
+can still report an unknown database condition; re-observe only after confirmed
+worker completion and within the original deadline. Before a primary-site
+leaf fault, require a fresh baseline that places the primary at that site and
+reject any unresolved preparation mutation. SQL demotion, fresh connection
 refusal and route withdrawal are scoped observations; none proves durable
 restart exclusion. Production admission additionally requires qualified
 watchdog/external fencing and predecessor exclusion before successor writes.

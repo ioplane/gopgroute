@@ -156,6 +156,15 @@ without replay. Report the measured acknowledgement delay separately from
 continuous availability or a production RTO claim.
 Replay-lag cases emit two nontransactional 2 MiB WAL messages and verify the
 primary's reported replay lag exceeds 1 MiB before checking withdrawal.
+Leaf2/leaf3 cases first switch the primary to the affected site so that the
+old-primary exclusion path is exercised on every run. The sole-ingress leaf1
+case retains its separate topology limitation.
+Within the fixed fencing observation window, a completed worker may be
+followed by a fresh read after a transient unknown SQL result. An unresolved
+worker stops the campaign without launching a replacement. Re-observation
+does not extend the window, repeat a mutation or grant write authority.
+Reserve the full transport command budget before starting each worker; reject
+an observation before launch when the shared deadline cannot accommodate it.
 
 This covers the declared finite graph of faults, not arbitrary combinations,
 physical three-site isolation, hardware fencing or backup recovery. BGP edge

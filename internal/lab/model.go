@@ -62,6 +62,16 @@ type snapshot struct {
 	Client probe            `json:"client"`
 }
 
+func preparationReady(sc scenario, primary int, uncertain bool) error {
+	if uncertain {
+		return errors.New("preparation mutation remains uncertain; no fault admitted")
+	}
+	if sc.Kind == "leaf" && sc.Node > 1 && primary != sc.Node {
+		return errors.New("fresh baseline does not place primary at the prepared leaf site")
+	}
+	return nil
+}
+
 func (c *controller) snapshot(ctx context.Context) (snapshot, error) {
 	s := snapshot{Nodes: map[string]probe{}, Routes: map[string]probe{}, Leaves: map[string]probe{}}
 	var wg sync.WaitGroup
