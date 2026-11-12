@@ -228,6 +228,32 @@ class FaultTests(unittest.TestCase):
         self.assertEqual(connection.request.call_args.args[:2], ("GET", "/cluster"))
         self.assertIsNone(connection.request.call_args.kwargs["body"])
 
+    def test_replication_profile_requires_exact_effective_values(self) -> None:
+        connection = MagicMock()
+        response = connection.getresponse.return_value
+        response.status = 200
+        for timeout in ("10s", "60s"):
+            wanted = {"wal_sender_timeout": timeout, "wal_receiver_timeout": timeout}
+            config = {
+                "postgresql": {"parameters": wanted | {"private": "must-not-escape"}},
+                "synchronous_mode": True,
+                "synchronous_mode_strict": True,
+            }
+            response.read.return_value = json.dumps(config).encode()
+            with patch.object(
+                fault.http.client, "HTTPConnection", return_value=connection
+            ):
+                result = fault.main(["replication-timeouts", timeout])
+                self.assertEqual(result["parameters"], wanted)
+                self.assertNotIn("must-not-escape", json.dumps(result))
+                config["postgresql"] = {"parameters": {"wal_sender_timeout": timeout}}
+                response.read.return_value = json.dumps(config).encode()
+                with self.assertRaises(ValueError):
+                    fault.main(["replication-timeouts", timeout])
+        for value in ("0", "1s", "600s"):
+            with self.assertRaises(ValueError):
+                fault.main(["replication-timeouts", value])
+
     def test_campaign_lock_excludes_overlap_and_preserves_wrong_owner_nonce(
         self,
     ) -> None:

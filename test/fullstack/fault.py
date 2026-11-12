@@ -433,8 +433,24 @@ def api(path: str, method: str, body: dict) -> dict:
         and not isinstance(body["synchronous_node_count"], bool)
         and body["synchronous_node_count"] in (1, 2)
     )
+    replication = (
+        path == "/config"
+        and method == "PATCH"
+        and any(
+            body
+            == {
+                "postgresql": {
+                    "parameters": {
+                        "wal_sender_timeout": value,
+                        "wal_receiver_timeout": value,
+                    }
+                }
+            }
+            for value in ("10s", "60s")
+        )
+    )
     cluster = path == "/cluster" and method == "GET" and not body
-    if not (switch or count or cluster):
+    if not (switch or count or replication or cluster):
         raise ValueError("Unsupported fault API operation")
     with (
         deadline(10),
@@ -459,13 +475,33 @@ def api(path: str, method: str, body: dict) -> dict:
             ):
                 raise ValueError("Invalid Patroni cluster response")
             return value
-        if count:
+        if count or replication:
             connection.request("GET", "/config")
             response = connection.getresponse()
             data = response.read(65537)
             if response.status != 200 or len(data) > 65536:
                 raise ValueError("Effective Patroni config request failed")
             value = json.loads(data)
+            if replication:
+                if not isinstance(value, dict):
+                    raise ValueError("Invalid Patroni config response")
+                postgres = value.get("postgresql")
+                if not isinstance(postgres, dict):
+                    raise ValueError("Invalid Patroni PostgreSQL config")
+                parameters = postgres.get("parameters")
+                wanted = body["postgresql"]["parameters"]
+                if (
+                    not isinstance(parameters, dict)
+                    or any(parameters.get(key) != val for key, val in wanted.items())
+                    or value.get("synchronous_mode") is not True
+                    or value.get("synchronous_mode_strict") is not True
+                ):
+                    raise ValueError("Effective Patroni replication config differs")
+                return {
+                    "status": 200,
+                    "operation": "replication-timeouts",
+                    "parameters": wanted,
+                }
             if (
                 not isinstance(value, dict)
                 or not isinstance(value.get("synchronous_node_count"), int)
@@ -581,6 +617,19 @@ def main(args: list[str]) -> object:  # noqa: PLR0911, PLR0912 # Explicit closed
             )
         case ["sync-count", count] if count in ("1", "2"):
             return api("/config", "PATCH", {"synchronous_node_count": int(count)})
+        case ["replication-timeouts", value] if value in ("10s", "60s"):
+            return api(
+                "/config",
+                "PATCH",
+                {
+                    "postgresql": {
+                        "parameters": {
+                            "wal_sender_timeout": value,
+                            "wal_receiver_timeout": value,
+                        }
+                    }
+                },
+            )
         case ["replay", value] if value in ("pause", "resume"):
             return sql(SQL[value])
         case ["wal"]:

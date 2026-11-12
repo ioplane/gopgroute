@@ -179,6 +179,8 @@ def database(index: int) -> None:
                         "hot_standby": "on",
                         "max_replication_slots": 10,
                         "max_wal_senders": 10,
+                        "wal_sender_timeout": "10s",
+                        "wal_receiver_timeout": "10s",
                         "max_slot_wal_keep_size": "256MB",
                         "password_encryption": "scram-sha-256",  # nosec B105 # Algorithm identifier.
                         "ssl": "on",

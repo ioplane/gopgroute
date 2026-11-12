@@ -7,6 +7,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The isolated fixture uses explicit 10-second replication timeouts and checks
+  their effective values before faults. The bounded configuration operation
+  verifies DCS readback and supports restoring the former 60-second timers.
+
 - Primary-site leaf failures are explicitly prepared as primary losses.
   Transient unknown SQL results may be re-observed inside the original window
   only after worker completion and with a full worker transport budget;

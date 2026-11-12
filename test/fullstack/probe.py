@@ -232,6 +232,10 @@ def postgres() -> dict:
             'recovery',pg_is_in_recovery(),
             'postmaster_started',pg_postmaster_start_time()::text,
             'synchronous_commit',current_setting('synchronous_commit'),
+            'wal_sender_timeout_ms',(SELECT setting::int FROM pg_settings
+              WHERE name='wal_sender_timeout'),
+            'wal_receiver_timeout_ms',(SELECT setting::int FROM pg_settings
+              WHERE name='wal_receiver_timeout'),
             'synchronous_standby_names',current_setting('synchronous_standby_names'),
             'replication',(SELECT coalesce(json_agg(x),'[]') FROM (
               SELECT r.pid,r.application_name,r.state,r.sync_state,
@@ -256,6 +260,8 @@ def postgres() -> dict:
         ("recovery", bool),
         ("postmaster_started", str),
         ("synchronous_commit", str),
+        ("wal_sender_timeout_ms", int),
+        ("wal_receiver_timeout_ms", int),
         ("synchronous_standby_names", str),
         ("replication", list),
         ("wal_receiver", list),

@@ -196,6 +196,12 @@ func (s snapshot) healthy() error {
 		return e
 	}
 	for _, n := range s.Nodes {
+		for _, setting := range []string{"wal_sender_timeout_ms", "wal_receiver_timeout_ms"} {
+			value, e := n.number("postgres", setting)
+			if e != nil || value != 10000 {
+				return errors.Join(e, errors.New("replication timeout does not match the 10-second lab profile"))
+			}
+		}
 		ok, e := n.boolean("etcd", "health")
 		if e != nil || !ok {
 			return errors.Join(e, errors.New("DCS unhealthy"))

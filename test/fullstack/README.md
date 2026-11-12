@@ -166,6 +166,16 @@ does not extend the window, repeat a mutation or grant write authority.
 Reserve the full transport command budget before starting each worker; reject
 an observation before launch when the shared deadline cannot accommodate it.
 
+The lab profile sets both PostgreSQL replication timeouts to 10 seconds, below
+the 20-second DCS TTL. This bounds silent replication-connection detection;
+it does not fence an arbitrary stalled postmaster. A fast shutdown can wait
+for WAL senders, so the default 60-second timers can outlive the observation
+window. For an existing fixture, apply `fault.py replication-timeouts 10s`
+once through its scoped container transport, then verify both effective
+settings are 10000 ms on all three nodes. Editing bootstrap configuration
+alone does not update an existing DCS. `replication-timeouts 60s` restores
+the former timer values. Campaign preflight rejects a mismatched profile.
+
 This covers the declared finite graph of faults, not arbitrary combinations,
 physical three-site isolation, hardware fencing or backup recovery. BGP edge
 tests withdraw sessions; they do not emulate cable failure. Reported timings

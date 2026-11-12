@@ -57,3 +57,9 @@ inputs; pure state-machine tests do not qualify their adapters or provide a
 deployable replacement HA controller. Prioritize physical fencing evidence,
 then proven replay-lag injection, then recovery-budget diagnosis. Task status
 and exact private runtime receipts remain in the existing issue workflow.
+
+Qualify the explicit laboratory replication timeout profile separately from
+the former defaults. Require effective values on every node, primary-site
+loss and DCS-partition transactions, exact ledger preservation and recovery.
+A network-connection timeout is not a general process-stop deadline or
+independent watchdog; production predecessor exclusion remains a separate gate.
